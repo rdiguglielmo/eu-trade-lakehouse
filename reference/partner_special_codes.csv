@@ -1,0 +1,13 @@
+partner_code,partner_name,category,counts_in_totals,reason
+XI,United Kingdom (Northern Ireland),uk_split,false,"Only in the full_partxixu files, where GB is exactly XI + XU. Counted next to GB, it doubles trade with the United Kingdom."
+XU,United Kingdom (excluding Northern Ireland),uk_split,false,"Only in the full_partxixu files, where GB is exactly XI + XU. Counted next to GB, it doubles trade with the United Kingdom."
+QP,High Seas,high_seas,true,"Real trade without a partner country: counts in totals, not in country rankings."
+QQ,Stores and Provisions,stores_and_provisions,true,"Real trade without a partner country: counts in totals, not in country rankings."
+QR,Stores and Provisions within the framework of Intra-EU trade,stores_and_provisions,true,"Real trade without a partner country: counts in totals, not in country rankings."
+QS,Stores and Provisions within the framework of trade with third countries,stores_and_provisions,true,"Real trade without a partner country: counts in totals, not in country rankings."
+QU,Countries and territories not specified,not_specified,true,"Real trade without a partner country: counts in totals, not in country rankings."
+QV,Countries and territories not specified within the framework of Intra_EU trade,not_specified,true,"Real trade without a partner country: counts in totals, not in country rankings."
+QW,Countries and territories not specified within the framework of trade with third countries,not_specified,true,"Real trade without a partner country: counts in totals, not in country rankings."
+QX,Countries and territories not specified for commercial or military reasons,confidential,true,"Real trade without a partner country: counts in totals, not in country rankings."
+QY,Countries and territories not specified for commercial or military reasons in the framework of Intra_EU trade,confidential,true,"Partner withheld for confidentiality: counts in totals, not in country rankings. In product detail rows it also holds trade whose partner the TOTAL rows disclose."
+QZ,Countries and territories not specified for commercial or military reasons in the framework of trade with third countries,confidential,true,"Partner withheld for confidentiality: counts in totals, not in country rankings. In product detail rows it also holds trade whose partner the TOTAL rows disclose."
