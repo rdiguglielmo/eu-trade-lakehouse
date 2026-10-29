@@ -1,0 +1,43 @@
+# Lint, type checking and the whole test suite on every push to main and every
+# pull request. The pipeline runs on Databricks; here Spark, with Delta, is the
+# engine of the tests of its transformation logic.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      # The JDK of the Spark tests, which JAVA_HOME points to.
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Install the lock
+        run: pip install --require-hashes -r requirements.txt
+
+      - name: Lint
+        run: |
+          ruff check .
+          ruff format --check .
+
+      - name: Type check
+        run: mypy src notebooks
+
+      - name: Tests
+        run: pytest -ra
