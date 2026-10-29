@@ -1,0 +1,19 @@
+# Lint and format settings for this repository. With this file in place, ruff
+# no longer applies the settings of a ruff.toml in a folder above the clone.
+target-version = "py312"
+
+[lint]
+# On top of ruff's defaults: import order, likely bugs, newer syntax, ruff's
+# own rules, simplifications, comprehensions, pytest style and security.
+#
+# Left out on purpose: E501, since the formatter sets the length of code and
+# what passes it is prose; ERA, which reads the # MAGIC lines of a Databricks
+# notebook as commented-out code; and the style families (PL, N, D, T20, EM,
+# TRY, COM), which flag print() in the notebooks, the F alias of
+# pyspark.sql.functions, and the global and the deferred imports that are
+# there on purpose.
+extend-select = ["I", "B", "UP", "RUF", "SIM", "C4", "PT", "S"]
+
+[lint.per-file-ignores]
+# pytest checks with assert.
+"tests/**" = ["S101"]

@@ -1,0 +1,32 @@
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Secrets - never commit
+.env
+.env.*
+.databrickscfg
+*.pem
+id_rsa*
+
+# What a local Spark session can leave in the working directory, as the one
+# the tests start.
+spark-warehouse/
+metastore_db/
+derby.log
+
+# Tool caches. Each also writes its own .gitignore, which this does not rely on.
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# Editor state
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db

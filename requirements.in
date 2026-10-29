@@ -1,0 +1,38 @@
+# Everything the repository runs outside Databricks: the landing code and the
+# Job deployment, the tests with their Spark engine, type checking and lint.
+# Verified on Python 3.12.
+#
+# Compatible ranges. requirements.txt pins every package, dependencies
+# included, with its hashes, and is compiled from this file with pip-tools:
+#     pip-compile --generate-hashes requirements.in
+
+# HTTP client for the Eurostat bulk download facility. 2.33 fixes
+# PYSEC-2026-2275.
+requests>=2.33,<3
+
+# Eurostat publishes the monthly files as 7z archives, which the standard
+# library cannot open: zipfile reads ZIP only. The Job installs the same
+# version in the environment of its landing task.
+py7zr>=1.1,<2
+
+# Creates or replaces the Job through the Jobs API
+databricks-sdk>=0.152,<1
+
+# The engine of the tests of the transformation logic, which on Databricks
+# runs on the runtime's own Spark. Versions follow serverless environment
+# version 6 (Apache Spark 4.2), so the ranges allow patch releases only. Needs
+# a JDK 17 and JAVA_HOME pointing to it.
+pyspark>=4.2,<4.3
+
+# Delta Lake for the tests: delta-spark 4.4 is built for Spark 4.2
+delta-spark>=4.4,<4.5
+
+pytest>=9.1,<10
+
+# Type checking, with the stubs requests does not ship.
+mypy>=2.4,<3
+types-requests>=2.33,<3
+
+# Lint and format. Pinned to a minor version, because a new minor version
+# changes the rules.
+ruff>=0.15.15,<0.16

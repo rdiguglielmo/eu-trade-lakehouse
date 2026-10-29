@@ -1,0 +1,14 @@
+# Normalise all text files to LF in the repository and on checkout, so a
+# Windows checkout does not rewrite every line ending of the Python, SQL and
+# notebook sources that also run on Databricks.
+* text=auto eol=lf
+
+# Binary files: never touch line endings or try to diff these. The 7z archives
+# are the Eurostat source format; they are not versioned, but declaring them
+# keeps an accidental add from being silently corrupted.
+*.7z binary
+*.pbix binary
+*.parquet binary
+*.pdf binary
+*.png binary
+*.zip binary
