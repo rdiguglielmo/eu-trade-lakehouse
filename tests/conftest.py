@@ -86,6 +86,9 @@ def spark() -> Iterator[SparkSession]:
     os.environ.setdefault("PYSPARK_PYTHON", sys.executable)
     builder = (
         SparkSession.builder.master("local[2]")
+        # Read when the JVM starts. With Spark's default of 1 GB, the gold
+        # modules, which keep their dimensions cached, run out of heap.
+        .config("spark.driver.memory", "4g")
         .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
         .config(
             "spark.sql.catalog.spark_catalog",
