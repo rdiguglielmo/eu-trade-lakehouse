@@ -189,8 +189,9 @@ def period_from(value: str, name: str) -> str:
 def window_from(start_value: str, end_value: str) -> tuple[str, str | None]:
     """Read the parameters start_period and end_period of a run.
 
-    An empty end_period leaves the window open: it reaches the last month
-    there is.
+    An empty end_period leaves the window open: the landing stops it at the
+    month before the last one listed, and the notebooks at the last month the
+    Volume holds.
     """
     start = period_from(start_value, "start_period")
     end = period_from(end_value, "end_period") if end_value.strip() else None

@@ -608,11 +608,15 @@ def eurostat(
 
 
 def listing_of(archive: Path, *, extra_bytes: int = 0) -> dict[str, Publication]:
-    """A listing that holds 202605 as the archive served, published on 2026-10-16."""
+    """A listing that holds 202605 as the archive served, published on 2026-10-16.
+
+    And a newer month, 202606, as the newest one of the listing, published on
+    its own four days later, which an open window leaves out."""
     return {
         "full_v2_202605.7z": Publication(
             archive.stat().st_size + extra_bytes, "2026-10-16T10:00:08"
-        )
+        ),
+        "full_v2_202606.7z": Publication(archive.stat().st_size, "2026-10-20T16:03:31"),
     }
 
 
@@ -637,7 +641,9 @@ def test_a_new_month_is_landed_and_recorded(
     assert lines[0] == "period,partner,stk_flow,value_meur,table_updated"
     assert lines[1] == "202605,EU27_2020,EXP,360873.5,2026-10-16T11:00:00+0200"
     assert len(lines) == 7
-    assert land.read_manifest(volume / "manifest.csv") == listing
+    assert land.read_manifest(volume / "manifest.csv") == {
+        "full_v2_202605.7z": listing["full_v2_202605.7z"]
+    }
 
 
 def test_a_current_month_is_not_downloaded_again(
@@ -668,7 +674,9 @@ def test_a_republished_month_is_replaced(
     files = files_below(volume)
     assert files["full_v2_202605.csv"] == b"rows of 10-16"
     assert files["published/full_v2_202605.csv"].startswith(b"period,partner")
-    assert land.read_manifest(volume / "manifest.csv") == listing
+    assert land.read_manifest(volume / "manifest.csv") == {
+        "full_v2_202605.7z": listing["full_v2_202605.7z"]
+    }
 
 
 def test_a_republished_month_without_figures_yet_loses_its_old_copy(
@@ -718,12 +726,41 @@ def test_the_window_lands_only_its_months(
     assert downloaded == ["full_v2_202605.7z"]
 
 
-def test_an_empty_window_stops_the_run_before_any_download(
+def test_an_open_window_leaves_the_newest_month_out(
+    volume: Path, monkeypatch: pytest.MonkeyPatch, eurostat: tuple[Path, list[str]]
+) -> None:
+    # Published without the intra-EU trade of most countries, which comes with
+    # the next release.
+    archive, downloaded = eurostat
+    monkeypatch.setattr(land, "fetch_listing", lambda: listing_of(archive))
+    planned = land.land(volume, "202601", None)
+    assert [month.period for month in planned] == ["202605"]
+    assert downloaded == ["full_v2_202605.7z"]
+    assert "full_v2_202606.7z" not in land.read_manifest(volume / "manifest.csv")
+
+
+def test_a_window_that_names_the_newest_month_lands_it(
     volume: Path, monkeypatch: pytest.MonkeyPatch, eurostat: tuple[Path, list[str]]
 ) -> None:
     archive, downloaded = eurostat
     monkeypatch.setattr(land, "fetch_listing", lambda: listing_of(archive))
-    with pytest.raises(ValueError, match="no monthly archive from 202606 to the last"):
+    planned = land.land(volume, "202601", "202606")
+    assert [(month.period, month.status) for month in planned] == [
+        ("202605", "new"),
+        ("202606", "new"),
+    ]
+    assert downloaded == ["full_v2_202605.7z", "full_v2_202606.7z"]
+
+
+def test_an_empty_window_stops_the_run_before_any_download(
+    volume: Path, monkeypatch: pytest.MonkeyPatch, eurostat: tuple[Path, list[str]]
+) -> None:
+    # From the newest month, an open window holds none.
+    archive, downloaded = eurostat
+    monkeypatch.setattr(land, "fetch_listing", lambda: listing_of(archive))
+    with pytest.raises(
+        ValueError, match="no monthly archive from 202606 to the month before"
+    ):
         land.land(volume, "202606", None)
     assert downloaded == []
     assert files_below(volume) == {}

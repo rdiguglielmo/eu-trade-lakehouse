@@ -59,10 +59,11 @@ logging.basicConfig(
 # COMMAND ----------
 
 # DBTITLE 1,Run settings
-# The window of months: from start_period to end_period, or to the last month
-# the listing holds while end_period is empty. The Job fills both from its
-# parameters of the same names. Created in a cell of their own, because a
-# widget created by a command that fails is never shown.
+# The window of months: from start_period to end_period, or to the month
+# before the last one the listing holds while end_period is empty, since the
+# newest month lacks most of its intra-EU trade (src/land.py). The Job fills
+# both from its parameters of the same names. Created in a cell of their own,
+# because a widget created by a command that fails is never shown.
 dbutils.widgets.text("start_period", "202601")
 dbutils.widgets.text("end_period", "")
 
@@ -75,7 +76,7 @@ start, end = window_from(
 volume = Path(VOLUME_PATH)
 
 print(f"Target Volume: {volume}")
-print(f"Window: from {start} to {end or 'the last month listed'}")
+print(f"Window: from {start} to {end or 'the month before the last one listed'}")
 
 # COMMAND ----------
 

@@ -12,6 +12,14 @@ reconciliation in silver compares the file with the figures of its own
 publication. A month whose figures the table does not hold yet lands without a
 copy, and the reconciliation does not evaluate it.
 
+The window runs from a start to an end. Without an end, it stops at the month
+before the last one listed. Eurostat publishes the detail of a month's extra-EU
+trade about 46 days after it ends, and that of its intra-EU trade usually with
+the next monthly release, except for the few countries that send both at once.
+The newest month of the listing therefore lacks most of its intra-EU trade, and
+the reconciliation in silver would stop the run on it: it lands with the next
+release, once complete.
+
 Eurostat republishes months under the same name. The listing of the bulk
 download facility is compared with the Volume's manifest, which records the
 size and the publication time of each landed archive, and each month of the
@@ -561,14 +569,18 @@ def land_code_lists(volume: Path) -> None:
 def land(volume: Path, start: str, end: str | None) -> list[PlannedMonth]:
     """Land every month of the window that is new or republished, and the code lists.
 
-    The window runs from start to end, or to the last month the listing holds.
-    Returns the plan of each month.
+    The window runs from start to end, or to the month before the last one the
+    listing holds. Returns the plan of each month.
     """
     listing = fetch_listing()
     periods = months_in_window(listing, start, end)
+    if end is None:
+        # The newest month waits for its intra-EU trade (module docstring).
+        periods = periods[:-1]
     if not periods:
         raise ValueError(
-            f"The listing holds no monthly archive from {start} to {end or 'the last'}"
+            f"The listing holds no monthly archive from {start} to "
+            f"{end or 'the month before the last one'}"
         )
     manifest = read_manifest(volume / MANIFEST_NAME)
     planned = plan_months(periods, listing, manifest, volume)
