@@ -399,8 +399,9 @@ the answers of [`sql/analysis_queries.sql`](sql/analysis_queries.sql).
 ```
 
 253 tests. The 116 not marked `spark` start no JVM, and run wherever the lock is installed. The
-137 marked `spark` start a local Spark with Delta, which needs a JDK 17 and `JAVA_HOME`. The CI
-runs ruff, mypy and the whole suite on every push, on Ubuntu, in 11 to 15 minutes
+137 marked `spark` start a local Spark with Delta, which needs a JDK 17 and `JAVA_HOME`, and on
+Windows can hang at the start of its first session. The CI runs ruff, mypy and the whole suite on
+every push, on Ubuntu, in 8 to 10 minutes
 ([Tests and lint](docs/engineering-notes.md#tests-and-lint)).
 
 ## Results

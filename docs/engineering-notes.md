@@ -1416,14 +1416,36 @@ needs a JDK 17 and `JAVA_HOME`; the other 116 start no JVM, and
 of the tests of the transformation logic, not a second way to run the
 pipeline. `tests/conftest.py` builds one session per test module, `local[2]`
 with the Delta extension and catalog through `configure_spark_with_delta_pip`,
-and stops it at the end of the module. It gives the driver 4 GB of heap: with
-Spark's default of 1 GB, the gold modules, which keep their dimensions cached,
-run out of memory.
+and stops it at the end of the module. The JVM outlives the sessions: PySpark
+starts one for the whole run, with the first session, so its heap holds the
+whole suite. The session gives the driver 4 GB of heap: with Spark's default
+of 1 GB, the gold modules, which keep their dimensions cached, run out of
+memory.
+
+It also sets Spark's memory pages to 2 MB. Spark sizes a page from the heap
+and the cores, 64 MB here, and every hash table and broadcast takes a whole
+page, however few its rows. Measured after a full GC at the end of each test,
+on a local run with the same JDK, Spark, Delta and heap as the CI:
+
+| Pages | Live heap at its peak, in the views | Spark's storage memory there | `long[]` at the end of `test_gold.py` |
+|---|---|---|---|
+| 64 MB | 3,129 MB of 4,096 | 2,178 MB, at its ceiling | 2,181 MB |
+| 2 MB | 1,249 MB | 161 MB | 75 MB |
+
+With 64 MB pages the broadcasts filled Spark's storage memory, and the views
+ran close enough to the 4 GB to run out of heap building a broadcast. With
+2 MB pages the margin is 2.8 GB. What is left at the peak is mostly query
+plans and byte arrays, the same with either page size.
 
 The CI, `.github/workflows/ci.yml`, runs on every push to `main` and every pull
 request, on Ubuntu with Python 3.12 and a Temurin JDK 17. It installs the lock
 with `--require-hashes`, runs ruff, `ruff format --check` and mypy, and then the
-whole suite, which takes 11 to 15 minutes there.
+whole suite, which takes 8 to 10 minutes there, against 12 to 18 with 64 MB
+pages.
+
+On Windows the first Spark session of the tests can hang while the executor,
+which runs in the same process, downloads the Delta jars from the driver. The
+CI runs them on Ubuntu.
 
 | File | What it covers |
 |---|---|
