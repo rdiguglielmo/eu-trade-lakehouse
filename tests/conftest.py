@@ -89,6 +89,12 @@ def spark() -> Iterator[SparkSession]:
         # Read when the JVM starts. With Spark's default of 1 GB, the gold
         # modules, which keep their dimensions cached, run out of heap.
         .config("spark.driver.memory", "4g")
+        # Spark sizes its memory pages from the heap and the cores, 64 MB
+        # here, and each hash table and broadcast takes a whole page however
+        # few its rows. In the gold modules the pages took up to 2.2 GB of the
+        # 4, and the live heap peaked at 3.1 GB in the views, close enough for
+        # them to run out. With 2 MB pages it peaks at 1.2 GB.
+        .config("spark.buffer.pageSize", "2m")
         .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
         .config(
             "spark.sql.catalog.spark_catalog",
