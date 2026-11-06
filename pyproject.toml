@@ -1,8 +1,21 @@
-# Lint and format settings for this repository. With this file in place, ruff
-# no longer applies the settings of a ruff.toml in a folder above the clone.
+# Settings of the two tools that read them from here: pytest and ruff. Not a
+# package: the dependencies are in requirements.in, and their lock in
+# requirements.txt. With this file in place, neither tool looks for settings
+# in a folder above the clone.
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# The modules in src/ import each other by name, as the notebooks do.
+pythonpath = ["src"]
+addopts = "--strict-markers"
+markers = [
+    "spark: starts a local Spark session with Delta; needs a JDK 17 and JAVA_HOME",
+]
+
+[tool.ruff]
 target-version = "py312"
 
-[lint]
+[tool.ruff.lint]
 # On top of ruff's defaults: import order, likely bugs, newer syntax, ruff's
 # own rules, simplifications, comprehensions, pytest style and security.
 #
@@ -14,6 +27,6 @@ target-version = "py312"
 # there on purpose.
 extend-select = ["I", "B", "UP", "RUF", "SIM", "C4", "PT", "S"]
 
-[lint.per-file-ignores]
+[tool.ruff.lint.per-file-ignores]
 # pytest checks with assert.
 "tests/**" = ["S101"]

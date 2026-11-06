@@ -1185,20 +1185,20 @@ one fails far from the cause.
 
 ```
 python -m venv .venv
-.venv\Scripts\python -m pip install --require-hashes -r requirements.txt
+.venv\Scripts\python -m pip install -r requirements.txt
 ```
 
 `requirements.txt` is a lock: every package, dependencies included, at one
-version and with the hashes of its files, so pip installs it in hash-checking
-mode and every install gets the same packages. It is the one lock of the
-repository: `requests` and `py7zr` for the landing, `databricks-sdk` for the
+version, so every install gets the same versions. It pins versions and not
+the hashes of their files, so it reads as one line per package, followed by
+what needs it. It is the one lock of the repository: `requests` and `py7zr` for the landing, `databricks-sdk` for the
 deploy, `pyspark` and `delta-spark` as the engine of the tests, `pytest`,
 `mypy` with `types-requests`, and `ruff`. The range each direct dependency may
 move within, and why, is in `requirements.in`. A version changes by editing it
 and compiling the lock again with pip-tools:
 
 ```
-pip-compile --generate-hashes requirements.in
+pip-compile requirements.in
 ```
 
 The lock was compiled and installed with Python 3.12 on Windows. pip-compile
@@ -1427,8 +1427,8 @@ ran close enough to the 4 GB to run out of heap building a broadcast. With
 plans and byte arrays, the same with either page size.
 
 The CI, `.github/workflows/ci.yml`, runs on every push to `main` and every pull
-request, on Ubuntu with Python 3.12 and a Temurin JDK 17. It installs the lock
-with `--require-hashes`, runs ruff, `ruff format --check` and mypy, and then the
+request, on Ubuntu with Python 3.12 and a Temurin JDK 17. It installs the lock,
+runs ruff, `ruff format --check` and mypy, and then the
 whole suite, which takes 8 to 10 minutes there, against 12 to 18 with 64 MB
 pages.
 
@@ -1538,6 +1538,7 @@ Lint, format and types, from the repository root:
 .venv\Scripts\python -m mypy src notebooks
 ```
 
-`ruff.toml` names the rule families on top of ruff's defaults and says why the
-others are left out. mypy resolves the notebooks' imports from `src/` because
+`pyproject.toml` holds the settings of pytest and ruff, and nothing else: the
+repository is not a package. Its ruff section names the rule families on top
+of ruff's defaults and says why the others are left out. mypy resolves the notebooks' imports from `src/` because
 `src/` is among the folders it checks.

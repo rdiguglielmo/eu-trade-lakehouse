@@ -3,8 +3,8 @@
 # Verified on Python 3.12.
 #
 # Compatible ranges. requirements.txt pins every package, dependencies
-# included, with its hashes, and is compiled from this file with pip-tools:
-#     pip-compile --generate-hashes requirements.in
+# included, at one version, and is compiled from this file with pip-tools:
+#     pip-compile requirements.in
 
 # HTTP client for the Eurostat bulk download facility. 2.33 fixes
 # PYSEC-2026-2275.

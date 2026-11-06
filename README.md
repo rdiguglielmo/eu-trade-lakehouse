@@ -356,12 +356,13 @@ short path, such as `C:\src`, or enable long paths. Check also that `python` is 
 git clone https://github.com/rdiguglielmo/eu-trade-lakehouse
 cd eu-trade-lakehouse
 python -m venv .venv
-.venv\Scripts\python -m pip install --require-hashes -r requirements.txt
+.venv\Scripts\python -m pip install -r requirements.txt
 ```
 
-`requirements.txt` pins every package, dependencies included, with its hashes: those of the
+`requirements.txt` pins every package, dependencies included, at one version: those of the
 landing, the Databricks SDK of the deploy, and Spark and Delta as the engine of the tests
-([Environment](docs/engineering-notes.md#environment)).
+([Environment](docs/engineering-notes.md#environment)). `pyproject.toml` holds only the settings
+of pytest and ruff.
 
 **2. Prepare the workspace.** On Databricks Free Edition:
 

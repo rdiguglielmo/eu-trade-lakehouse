@@ -7,8 +7,3 @@
 # are the Eurostat source format; they are not versioned, but declaring them
 # keeps an accidental add from being silently corrupted.
 *.7z binary
-*.pbix binary
-*.parquet binary
-*.pdf binary
-*.png binary
-*.zip binary
