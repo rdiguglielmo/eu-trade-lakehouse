@@ -6,7 +6,7 @@
 # MAGIC %md
 # MAGIC # 05 - Gold quality checks (EU Trade Lakehouse)
 # MAGIC
-# MAGIC Runs the eight data quality checks of the gold layer: over both facts, per file of the
+# MAGIC Runs the seven data quality checks of the gold layer: over both facts, per file of the
 # MAGIC pending months, and over the dimensions they point to; check 08 over every month of the
 # MAGIC facts. Each check of a fact writes one row per fact and file to `ops.dq_check_results`,
 # MAGIC and each check of a dimension one row per dimension, without a file, next to the failures

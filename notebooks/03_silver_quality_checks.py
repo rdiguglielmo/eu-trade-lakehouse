@@ -6,7 +6,7 @@
 # MAGIC %md
 # MAGIC # 03 - Silver quality checks (EU Trade Lakehouse)
 # MAGIC
-# MAGIC Runs the twelve data quality checks of the silver layer, sixteen counting their
+# MAGIC Runs the eleven data quality checks of the silver layer, thirteen counting their
 # MAGIC parts, over the files of the pending months. Each writes one row per table it reads
 # MAGIC and per file to `ops.dq_check_results`, next to the failures it is expected to find:
 # MAGIC a count or a range. A count off its expectation, up or down, fails
@@ -15,14 +15,14 @@
 # MAGIC Responsibilities:
 # MAGIC   1. Read the files of the pending months (`src/watermark.py`) from silver and bronze,
 # MAGIC      and stop if one is missing. With none pending, end without writing.
-# MAGIC   2. Read the code lists, the euro area seed and the copies of the published figures.
+# MAGIC   2. Read the code lists and the copies of the published figures.
 # MAGIC   3. Run every check: see `src/silver_checks.py`, which also declares the expected
 # MAGIC      failures.
 # MAGIC   4. Append the results to `ops.dq_check_results`, read them back and compare.
 # MAGIC
 # MAGIC Reads from:  `eu_trade.silver.trade_detail`, `eu_trade.silver.trade_totals` and
 # MAGIC              `eu_trade.bronze.comext_trade`; the code lists and the published figures
-# MAGIC              in the Volume; `reference/euro_area_members.csv`
+# MAGIC              in the Volume
 # MAGIC Writes to:   `eu_trade.ops.dq_check_results`
 
 # COMMAND ----------
@@ -58,7 +58,6 @@ from config import (
     DQ_RESULTS_TABLE,
     OPS_SCHEMA,
     PUBLISHED_SUBDIR,
-    REFERENCE_DIR,
     SILVER_DETAIL_TABLE,
     SILVER_SCHEMA,
     SILVER_TOTALS_TABLE,
@@ -73,7 +72,6 @@ from silver_checks import (
     expected_failures,
     mismatches,
     read_code_list,
-    read_euro_area,
     read_published,
 )
 from watermark import landed_csv_paths, pending_in_window
@@ -162,7 +160,7 @@ for name, df in inputs.items():
 
 # COMMAND ----------
 
-# DBTITLE 1,Read the code lists, the euro area seed and the published figures
+# DBTITLE 1,Read the code lists and the published figures
 code_lists = landing / CODE_LISTS_SUBDIR
 valid_columns = ("code", "valid_from", "valid_to", "description")
 partners_iso = read_code_list(
@@ -179,7 +177,6 @@ geozones = read_code_list(
     str(code_lists / "GEOZONES-PARTNERS_ISO.txt"),
     ("zone", "code", "valid_from", "valid_to"),
 )
-euro_area = read_euro_area(spark, str(REFERENCE_DIR / "euro_area_members.csv"))
 
 # The copy saved with each file when it was landed. A file without one is not
 # evaluated by check 10.
@@ -213,7 +210,6 @@ for check_name, table, result in all_checks(
     cn=cn,
     procedures=procedures,
     geozones=geozones,
-    euro_area=euro_area,
     published=published,
 ):
     started = time.perf_counter()

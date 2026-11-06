@@ -82,9 +82,10 @@ def test_a_dimension_off_its_expectation_is_named_without_a_file() -> None:
 
 
 def test_a_gold_check_without_a_result_and_a_silver_name() -> None:
-    results = [r for r in every_check() if r["check_name"] != "02_no_null_key"]
+    name = "03_one_match_per_dimension"
+    results = [r for r in every_check() if r["check_name"] != name]
     results.append(result("09_no_duplicate_on_grain", 0, 0))
     assert mismatches(results, checks.CHECKS) == [
-        "02_no_null_key: no result",
+        f"{name}: no result",
         "09_no_duplicate_on_grain: not a check",
     ]

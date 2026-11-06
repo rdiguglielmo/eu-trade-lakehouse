@@ -277,8 +277,6 @@ def test_clean_inputs_fail_no_check(clean: dict[str, DataFrame]) -> None:
     assert found == {
         ("01_rows_match_silver", "detail"): {MAY: (4, 0)},
         ("01_rows_match_silver", "totals"): {MAY: (2, 0)},
-        ("02_no_null_key", "detail"): {MAY: (4, 0)},
-        ("02_no_null_key", "totals"): {MAY: (2, 0)},
         ("03_one_match_per_dimension", "detail"): {MAY: (4, 0)},
         ("03_one_match_per_dimension", "totals"): {MAY: (2, 0)},
         ("04_value_matches_silver", "detail"): {MAY: (1, 0)},
@@ -321,11 +319,17 @@ def test_01_a_fact_row_twice_or_missing(
         change(NC8, PARTNER="DD"),
     ],
 )
-def test_02_a_code_without_a_version_in_the_month(
-    spark: SparkSession, tmp_path: Path, dims: dict[str, DataFrame], line: str
+def test_03_a_code_without_a_version_in_the_month(
+    spark: SparkSession,
+    tmp_path: Path,
+    dims: dict[str, DataFrame],
+    clean: dict[str, DataFrame],
+    line: str,
 ) -> None:
+    # The fact leaves the key NULL, and a NULL key finds no row of its dimension.
     detail, _ = facts_of(silver_of(spark, tmp_path, line), dims)
-    assert failed(checks.no_null_key(detail)) == {MAY: 1}
+    result = run("03_one_match_per_dimension", "detail", **{**clean, "detail": detail})
+    assert failed(result) == {MAY: 1}
 
 
 def test_03_a_flow_its_dimension_lacks(clean: dict[str, DataFrame]) -> None:

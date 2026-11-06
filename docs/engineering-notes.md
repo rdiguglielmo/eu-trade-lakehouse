@@ -427,7 +427,7 @@ the partners whose trade is intra-EU (`TRADE_TYPE` I) in the full month of
 published on 2025-02-24. Its other 20 members carry their adoption dates.
 [`reference/euro_area_members.csv`](../reference/euro_area_members.csv) holds
 those 20 with the relation's dates, and Bulgaria from 2026-01-01, each with its
-source; silver takes the euro area from it.
+source; `dim_country` takes the euro area from it.
 
 **A code has one row per validity period.** `PARTNERS_ISO.txt` has 342 rows
 and 252 codes valid on 2026-05-01. A join on the code alone multiplies the
@@ -444,8 +444,8 @@ rows; the join picks the row valid in the row's `PERIOD`.
   conversion. A cast to a decimal reads them; a pattern for a number that
   requires a leading digit rejects them.
 - The two quantities are whole numbers, of up to 11 digits.
-- A reporter in the euro area has `VALUE_NAC` equal to `VALUE_EUR`. Check 07
-  counts the rows where it is not, and finds none in the seven full months.
+- A reporter in the euro area has `VALUE_NAC` equal to `VALUE_EUR`: no row of
+  the seven full months differs.
 - Some X-code rows carry a weight and a value of 0: the value is withheld and the
   weight published, as in Finland's exports of `72XXXXXX` to Sweden in 202605. A
   value per kilogram has to leave them out.
@@ -496,9 +496,9 @@ them (The checks, below).
 | `period` | Text, `YYYYMM`, and the partition column. `period_date`, its first day, picks the valid row of each code list |
 | `value_eur`, `value_nac` | `DECIMAL(18,3)`: at most 3 decimals and 13 integer digits are measured (Values) |
 | `quantity_kg`, `quantity_suppl_unit` | `BIGINT`: whole numbers of at most 11 digits |
-| `suppl_unit` | `NO_SU` becomes NULL, and so does its `quantity_suppl_unit`, which is 0 in every `NO_SU` row: check 12c finds no other in the seven full months. With a real unit a 0 stays, and check 6b counts it |
+| `suppl_unit` | `NO_SU` becomes NULL, and so does its `quantity_suppl_unit`, which is 0 in every `NO_SU` row: check 12c finds no other in the seven full months. With a real unit a 0 stays |
 | `quantity_kg` | A 0 stays 0: nothing in the file tells "not reported" from "less than half a kilogram". Check 6a counts it, and a value per kilogram exists only with a positive weight |
-| `value_nac` | As published: no question reads it, and check 7 reports the rows converted wrongly |
+| `value_nac` | As published: no question reads it |
 | `hs2`, `hs4`, `hs6` | Truncations of `product_nc`. An X code reaches only the level it keeps, `28XXXXXX` hs2, `2833XXXX` hs4 and `283321XX` hs6, and below that they are NULL. `is_x_code` marks those rows. Chapter 99 follows the same rule, though it belongs to the CN and not to the HS: 2,131 rows and 5,449.9 M EUR in the full month of 202605 |
 
 Two ways to break this without an error:
@@ -598,9 +598,6 @@ expectation of 0 then fails the run.
 | `04_period_matches_file` | `period` is the month in the file name | both tables | 0 |
 | `05_values_not_negative` | `value_eur` and `value_nac` are not negative | both tables | 0 |
 | `06a_kg_zero_with_value` | `quantity_kg` is 0 with a positive `value_eur`: counted, not dropped | detail | 5.0% to 6.0% of the rows |
-| `06b_unit_zero_with_value` | A real unit with `quantity_suppl_unit` 0 and a positive `value_eur` | detail | 0.40% to 0.60% of the rows |
-| `07_nac_matches_euro_area` | A reporter in the euro area on `period_date` has `value_nac` = `value_eur`; outside it, with a positive value, the two differ | both tables | 0 |
-| `08a_no_total_in_detail` | No `TOTAL` row in the detail | detail | 0 |
 | `08b_total_row_shape` | Every `TOTAL` row reads `TOTAL`, `TO`, `NO_SU` and 0 | bronze | 0 |
 | `09_no_duplicate_on_grain` | No duplicate on the grain | both tables | 0 |
 | `10_totals_match_published` | Totals by `trade_type` and `flow` against EU27_2020 and EXT_EU27_2020, and GB against UK: within 0.05 M EUR of the figures of the same publication | totals | 0 of 6, or not evaluated without a copy |
@@ -609,15 +606,15 @@ expectation of 0 then fails the run.
 | `12b_null_only_from_sentinel` | No NULL except in `suppl_unit` and its quantity together, from `NO_SU`, and in `hs4` and `hs6` below the level of an X code | both tables | 0 |
 | `12c_no_su_quantity_zero` | `NO_SU` always with a quantity of 0, which silver turns to NULL | bronze | 0 |
 
-- **The rates of 06a and 06b** hold the six full months of 202601 to 202606
-  with a margin: 06a found 5.312% to 5.586% of their detail rows, and 06b
-  0.466% to 0.499%. The margin is there for the months to come: 06b found
-  0.441% in 202607. A count outside the range stops the run, as a count off its
-  expectation does, so a change of the rule, or of the data, still shows.
-- **Check 7** takes the euro area from `reference/euro_area_members.csv`, not
-  from zone 1013 of the relation, which has no row for Bulgaria (Code lists).
-  Against the relation as published, check 7 flags every row of Bulgaria with a
-  value: 101,142 detail rows of the full month of 202605.
+- **The rate of 06a** holds the six full months of 202601 to 202606 with a
+  margin: it found 5.312% to 5.586% of their detail rows. The margin is there
+  for the months to come: 06a found 5.622% in 202607. A count outside the range
+  stops the run, as a count off its expectation does, so a change of the rule,
+  or of the data, still shows.
+- **The numbers of the checks retired are not reused**: 06b, 07 and 08a, which
+  described columns no question reads or repeated what a test and gold check
+  07 cover. A `check_name` in `ops.dq_check_results` keeps one meaning across
+  runs.
 - **Check 10** reads a copy of the published figures saved with the landed
   file, holding `period`, `partner`, `stk_flow`, `value_meur` and
   `table_updated`: never the live table, which is revised together with the
@@ -652,40 +649,40 @@ expectation of 0 then fails the run.
 #### What the checks found
 
 On the full month of 202605 as published on 2026-09-15, every check found
-exactly its expected failures: 06a 274,613 of 4,975,304 detail rows, and 06b
-23,742. Every other check found nothing, check 10 included, against the six
+exactly its expected failures: 06a 274,613 of 4,975,304 detail rows. Every
+other check found nothing, check 10 included, against the six
 published figures of the same publication. 12a and 12c read the 4,988,013
 bronze rows of the month.
 
 Over the full months of 202601 to 202606, 202605 from the publication of
 2026-09-15 and the other five from that of 2026-10-16, every check again found
-exactly its expected failures, 06a and 06b in each month. Every other check
-found nothing in any month, check 07 included, and check 10 matched all 36
-published figures, the largest gap 0.047 M EUR.
+exactly its expected failures, 06a within its range in each month. Every other
+check found nothing in any month, and check 10 matched all 36 published
+figures, the largest gap 0.047 M EUR.
 
-| File | Detail rows | `06a_kg_zero_with_value` | `06b_unit_zero_with_value` |
-|---|---:|---:|---:|
-| `full_v2_202601.csv` | 4,865,450 | 271,808 | 24,299 |
-| `full_v2_202602.csv` | 4,988,110 | 271,767 | 23,747 |
-| `full_v2_202603.csv` | 5,136,739 | 272,844 | 23,958 |
-| `full_v2_202604.csv` | 5,064,050 | 272,068 | 23,844 |
-| `full_v2_202605.csv` | 4,975,304 | 274,613 | 23,742 |
-| `full_v2_202606.csv` | 5,090,991 | 281,201 | 24,132 |
+| File | Detail rows | `06a_kg_zero_with_value` |
+|---|---:|---:|
+| `full_v2_202601.csv` | 4,865,450 | 271,808 |
+| `full_v2_202602.csv` | 4,988,110 | 271,767 |
+| `full_v2_202603.csv` | 5,136,739 | 272,844 |
+| `full_v2_202604.csv` | 5,064,050 | 272,068 |
+| `full_v2_202605.csv` | 4,975,304 | 274,613 |
+| `full_v2_202606.csv` | 5,090,991 | 281,201 |
 
 The two files of the incremental run (The incremental run), each within the
 range of its rule, and every other check as over the six:
 
-| File | Detail rows | `06a_kg_zero_with_value` | `06b_unit_zero_with_value` |
-|---|---:|---:|---:|
-| `full_v2_202605.csv`, of 2026-10-16 | 4,981,646 | 274,225, range 249,083 to 298,898 | 23,735, range 19,927 to 29,889 |
-| `full_v2_202607.csv` | 5,037,372 | 283,190, range 251,869 to 302,242 | 22,201, range 20,150 to 30,224 |
+| File | Detail rows | `06a_kg_zero_with_value` |
+|---|---:|---:|
+| `full_v2_202605.csv`, of 2026-10-16 | 4,981,646 | 274,225, range 249,083 to 298,898 |
+| `full_v2_202607.csv` | 5,037,372 | 283,190, range 251,869 to 302,242 |
 
 - The expectations of the five new months were counted before the checks ran,
   without Spark: each CSV read with pandas, every value as an integer of
-  thousandths of a euro, and the rules of 06a, 06b, 07, 10 and gold 07 applied
-  as `src/silver_checks.py` and `src/gold_checks.py` write them. On 202605 that
-  count gave every known number first, 12,709 `TOTAL` rows, 274,613, 23,742, 0
-  of 6 figures and 2 of 239 groups, and only then were its counts of the other
+  thousandths of a euro, and the rules of 06a, 10 and gold 07 applied as
+  `src/silver_checks.py` and `src/gold_checks.py` write them. On 202605 that
+  count gave every known number first, 12,709 `TOTAL` rows, 274,613, 0 of 6
+  figures and 2 of 239 groups, and only then were its counts of the other
   months declared.
 - **A check off by one row stops the run.** With an expectation of 06a moved
   one row off what the check counts, up and then down, each run wrote its
@@ -1063,7 +1060,6 @@ and 0 for any check it does not name.
 | Check | Rule | Reads | Expected |
 |---|---|---|---:|
 | `01_rows_match_silver` | Per file, as many fact rows as silver rows. Counts the rows apart | each fact and its silver table | 0 |
-| `02_no_null_key` | Every key of the fact resolved to a version | each fact | 0 |
 | `03_one_match_per_dimension` | Each fact row finds exactly one row in each of its dimensions: the reporter and the partner in `dim_country`, the product, the flow, the procedure and the month | each fact and its dimensions | 0 |
 | `04_value_matches_silver` | Per file, the `value_eur` of the fact adds up to silver's. Counts the one sum | each fact and its silver table | 0 |
 | `05_dimension_key_unique` | No two rows share the surrogate key or `(code, valid_from)`; in `dim_flow`, `dim_stat_procedure` and `dim_period`, the code | the five dimensions | 0 |
@@ -1073,8 +1069,10 @@ and 0 for any check it does not name.
 
 - **Check 03 is the strict form of "the star keeps the rows".** Counted row by
   row, a row the star loses and another it counts twice cannot cancel out, as
-  they could in a total. It overlaps checks 02 and 05 on purpose: a NULL key
-  finds no row, and a repeated key finds two.
+  they could in a total. A key the fact could not resolve to a version is
+  NULL and finds no row, and it overlaps check 05 on purpose: a repeated key
+  finds two. Number 02 is not reused: a check of its own for NULL keys
+  repeated this one.
 - **Checks 05 and 06 read the dimension tables as merged**, with every version
   an earlier MERGE left, since a version missing from the source is kept
   (Loading the versioned dimensions). Built from the code lists, versions run
@@ -1091,8 +1089,8 @@ and 0 for any check it does not name.
   months against the dimensions as merged then, and leaves the other months as
   they were: a later `MERGE` that starts a version later, or ends it earlier,
   leaves their rows pointing to a version that no longer covers their month,
-  with the key still found, so checks 02 and 03 pass. A key without a version
-  counts here too.
+  with the key still found, so check 03 passes. A key without a version counts
+  here too.
 - **An expectation names a check**, as in silver, and holds for every file and
   table the check reads. A check of a dimension writes its result without a
   file, and expects 0.
@@ -1105,7 +1103,7 @@ found exactly its expected failures: 16 results, 1 with failures.
 
 | Check | Full month of 202605 |
 |---|---:|
-| `01` to `03` | 0 of 4,975,304 detail rows and of 12,709 totals rows |
+| `01` and `03` | 0 of 4,975,304 detail rows and of 12,709 totals rows |
 | `04` | 0 of 1 sum per fact |
 | `05` | 0 of 390, 30,985, 2, 7 and 1 rows |
 | `06` | 0 of 390 and 30,985 versions |
@@ -1171,8 +1169,8 @@ Three runs over the full months on serverless, from the six of 202601 to
 
 Each count of the two files was compared with a count made first without
 Spark, with the rules of the checks, which gave every known number of 202606
-before theirs: 12,715 and 12,783 `TOTAL` rows; 06a 274,225 and 283,190; 06b
-23,735 and 22,201; check 10, 0 of 6; and gold 07, France's 2 groups in each.
+before theirs: 12,715 and 12,783 `TOTAL` rows; 06a 274,225 and 283,190;
+check 10, 0 of 6; and gold 07, France's 2 groups in each.
 
 The Job of this repository then landed 202607 again from Eurostat and took it
 through every layer, with the same numbers (The Job).
@@ -1312,7 +1310,7 @@ published on 2026-09-15, into empty schemas:
 |---|---|
 | Bronze | 4,988,013 from one file, read by `read_landed_csv()`, with 0 nulls |
 | Silver | 4,975,304 in `trade_detail` and 12,709 in `trade_totals` |
-| Silver checks | Each with its expected failures, 06a and 06b. Check 10 compared the six figures of the copy landed with the file |
+| Silver checks | Each with its expected failures, 06a within its range. Check 10 compared the six figures of the copy landed with the file |
 | Gold | `dim_country` 390 versions and `dim_product` 30,985, inserted into the empty tables; 2, 7 and 1 in the small dimensions; the facts, 4,975,304 and 12,709 |
 | Gold checks | 16 results, 1 with failures: check 07, 2 of 239 groups |
 | Views | The six lines of rows and value per view, and the answers. Read from the default schema, `eu_trade.gold.vw_partner_ranking` returns its 9,522 rows |
@@ -1325,7 +1323,7 @@ copy of the published figures of each month in the Volume:
 |---|---|
 | Bronze | 30,196,947 from six files, each its data rows, with 0 nulls |
 | Silver | 30,120,644 in `trade_detail` and 76,303 in `trade_totals` |
-| Silver checks | Each with its expected failures: 12 with failures, 06a and 06b in each month |
+| Silver checks | Each with its expected failures, 06a within its range in each month |
 | Gold | `dim_country` 390 versions and `dim_product` 30,985, inserted into the empty tables; 2, 7 and 6 in the small dimensions; the facts, as silver |
 | Gold checks | 61 results, 6 with failures: check 07, 2 groups in each month |
 | Views | The 36 lines of rows and value per view and month that the notebook prints, and the answers of 202606 |
@@ -1375,7 +1373,7 @@ Two runs over the seven full months of 202601 to 202607:
 
 | Run | Result |
 |---|---|
-| `end_period` 202607, with the CSV of 202607 deleted from the Volume and its row from the watermark | The seven tasks succeeded in 13 minutes. The landing landed 202607 again from Eurostat (The Volume's manifest), and the notebooks took it as pending: 5,050,155 rows in bronze and 35,253,450 in total; 5,037,372 and 12,783 in silver and the facts; 26 silver results, 06a at 283,190, 06b at 22,201 and check 10 at 0 of 6; both `MERGE` at 0 updated and 0 inserted, and 7 rows in `dim_period`; 30 gold results, check 07 at 2 of 240 groups and check 08 over the seven months; the watermark back at 7 rows. The 42 lines of the views identical, byte for byte, to those of the incremental run, and the answers with 162, 27, 27, 97, 162 and 2,749 rows |
+| `end_period` 202607, with the CSV of 202607 deleted from the Volume and its row from the watermark | The seven tasks succeeded in 13 minutes. The landing landed 202607 again from Eurostat (The Volume's manifest), and the notebooks took it as pending: 5,050,155 rows in bronze and 35,253,450 in total; 5,037,372 and 12,783 in silver and the facts; 26 silver results, 06a at 283,190 and check 10 at 0 of 6; both `MERGE` at 0 updated and 0 inserted, and 7 rows in `dim_period`; 30 gold results, check 07 at 2 of 240 groups and check 08 over the seven months; the watermark back at 7 rows. The 42 lines of the views identical, byte for byte, to those of the incremental run, and the answers with 162, 27, 27, 97, 162 and 2,749 rows |
 | The defaults | The seven tasks succeeded in 8 minutes. The landing left 202608 out and landed nothing; notebooks 01 to 05 took their window to the last month landed and found nothing pending, in 10 to 17 seconds each; the views printed the same 42 lines, byte for byte |
 
 What runs from a remote repository as from a Git folder:
@@ -1401,8 +1399,8 @@ The tests run with pytest from the repository root, with the lock installed:
 .venv\Scripts\python -m pytest
 ```
 
-253 tests. The 137 marked `spark` start a local Spark session with Delta, which
-needs a JDK 17 and `JAVA_HOME`; the other 116 start no JVM, and
+245 tests. The 130 marked `spark` start a local Spark session with Delta, which
+needs a JDK 17 and `JAVA_HOME`; the other 115 start no JVM, and
 `-m "not spark"` runs them wherever the lock is installed. Spark is the engine
 of the tests of the transformation logic, not a second way to run the
 pipeline. `tests/conftest.py` builds one session per test module, `local[2]`
@@ -1447,7 +1445,7 @@ CI runs them on Ubuntu.
 | `tests/test_deploy_job.py` | The Job created where the workspace has none of its name, its settings replaced where it has one, and two of its name stopping the run, against a fake of the Jobs API |
 | `tests/test_bronze.py` | The bronze reader on a local Spark: what it refuses and what it lets through |
 | `tests/test_silver.py` | The silver transformation on a local Spark, over real rows of the landed files read with the bronze reader: the totals apart, the HS levels of each kind of code, `NO_SU` and the zeros that stay, exact decimals, the fourth decimal rounded, a value that is not a number failing, the columns and types of each table. And that a DataFrame built from a Python list reads, which needs `PYSPARK_PYTHON` |
-| `tests/test_silver_checks.py` | The quality checks on a local Spark. Every check over real rows of the landed files fails only where the data does, in 06a and 06b; each one, alone, counts a real row broken on purpose and lets the row as landed pass. With real lines of the code lists: CRLF endings, a double quote in a description, a row with a field missing, codes valid only before the month. The copies of the published figures: a match, a figure 0.076 M EUR off, a figure without a counterpart, a file without a copy not evaluated |
+| `tests/test_silver_checks.py` | The quality checks on a local Spark. Every check over real rows of the landed files fails only where the data does, in 06a; each one, alone, counts a real row broken on purpose and lets the row as landed pass. With real lines of the code lists: CRLF endings, a double quote in a description, a row with a field missing, codes valid only before the month. The copies of the published figures: a match, a figure 0.076 M EUR off, a figure without a counterpart, a file without a copy not evaluated |
 | `tests/test_silver_expectations.py` | The expected failures and the comparison: every expectation naming a check; the rule of every month, and check 10 not evaluated for a file landed without a copy; a rate turned into a range rounded inward, and into 0 to 0 over nothing checked; a count above or below its expectation, at either end of its range or beyond it, NULL against a number either way, a check without a result and a name that is not a check. Starts no JVM |
 | `tests/test_gold.py` | The gold model on a local Spark, over real rows of the landed files and real lines of the code lists. The versions: Bulgaria's three, Germany's two rows of the same name kept, QY in zone 5900 and not a country, the United Kingdom leaving the EU; an X code that stops at its chapter, an eight-digit code that reaches every level, a parent row that adds no version, the codes that close and open with 2026. The dimensions as of 2025-12-31, built by the helper `as_of()`, and the MERGE: a first load, the changes of 2026, the same MERGE again, a repeated key refused, a version missing from the source counted. The keys of the facts: one fact row per silver row, Bulgaria's euro-area version in May 2026, a code the dimension does not hold left NULL, the columns and types. Its Delta tables are written by path below the test's folder, never to a metastore |
 | `tests/test_gold_checks.py` | The quality checks of gold on a local Spark, over real rows of the landed files and real lines of the code lists, built into facts and dimensions by `src/gold.py`. Every check over clean inputs fails nothing. Each check, alone, counts a fact or a dimension broken on purpose: a fact row twice or missing; a code without a version in its month; a flow, a version or a month that a dimension lacks, and a version it holds twice; a value a tenth of a cent off; a key twice in three ways; a version one day over the next; a group within the tolerance, exactly at it, beyond it, and without its TOTAL row; a version started after the month or ended before it once the facts were built, a product closed before the month, and check 08 reading every month of the facts |

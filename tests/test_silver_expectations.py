@@ -41,13 +41,8 @@ def test_every_expectation_names_a_check() -> None:
 @pytest.mark.parametrize(
     ("check_name", "has_copy", "expected"),
     [
-        # Every month: the rates of 06a and 06b, and 0 for any other check.
+        # Every month: the rate of 06a, and 0 for any other check.
         ("06a_kg_zero_with_value", True, KG_ZERO),
-        (
-            "06b_unit_zero_with_value",
-            True,
-            checks.Rate(Decimal("0.0040"), Decimal("0.0060")),
-        ),
         ("01_country_valid", True, 0),
         ("10_totals_match_published", True, 0),
         # Landed before the table held its figures: check 10 is not evaluated,

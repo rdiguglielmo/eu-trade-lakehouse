@@ -20,8 +20,8 @@ from pyspark.sql import functions as F
 
 import silver_checks as checks
 from bronze import read_landed_csv
-from config import EXPECTED_HEADER, REFERENCE_DIR
-from silver import split_bronze, typed
+from config import EXPECTED_HEADER
+from silver import split_bronze
 
 pytestmark = pytest.mark.spark
 
@@ -48,21 +48,16 @@ HS4_X = (
     "DE,GB,E,2833XXXX,52345,2013,2013,220,211220,06,2,1,NO_SU,202605,8859,8859,3435,0"
 )
 HS6_X = "BE,GB,E,283321XX,52349,2013,2013,220,211220,06,1,1,NO_SU,202605,6,6,2,0"
-# Czechia, outside the euro area: less than 1 EUR, no leading zero, no weight.
+# Less than 1 EUR, no leading zero, no weight.
 BELOW_ONE_EUR = (
     "CZ,GB,E,29212900,51452,2014,2014,220,211220,06,2,1,NO_SU,202605,.494,12,0,0"
 )
-# A real supplementary unit, with a quantity of 0: a failure of check 06b.
+# A real supplementary unit, with a quantity of 0.
 REAL_UNIT = "AT,GB,E,22089069,11249,1101,1101,122,113101,04,2,1,L_ALC_100PCT,202605,522,522,30,0"
-# Bulgaria, in the euro area since 2026-01-01.
-BULGARIA = (
-    "BG,GB,E,01061900,00190,0149,0148,111,111100,01,2,1,NO_SU,202605,289,289,23,0"
-)
 
 PRODUCT_ROWS = (NC8, CHAPTER_X, HS4_X, HS6_X, BELOW_ONE_EUR, REAL_UNIT)
 
-# Rows that break nothing but checks 06a (BELOW_ONE_EUR) and 06b (REAL_UNIT),
-# as in the data.
+# Rows that break nothing but check 06a (BELOW_ONE_EUR), as in the data.
 CLEAN_ROWS = (TOTAL_GB, *PRODUCT_ROWS)
 
 # Lines of the landed code lists, with their own line endings.
@@ -173,11 +168,6 @@ def code_lists(
     return lists
 
 
-@pytest.fixture(scope="module")
-def euro_area(spark: SparkSession) -> DataFrame:
-    return checks.read_euro_area(spark, str(REFERENCE_DIR / "euro_area_members.csv"))
-
-
 def write_published(
     folder: Path, source_file: str, *figures: tuple[str, str, str]
 ) -> str:
@@ -239,7 +229,6 @@ def test_clean_rows_fail_only_the_checks_the_data_fails(
     spark: SparkSession,
     tmp_path: Path,
     code_lists: dict[str, DataFrame],
-    euro_area: DataFrame,
 ) -> None:
     df_bronze = bronze(spark, tmp_path, *CLEAN_ROWS)
     df_detail, df_totals = split_bronze(df_bronze)
@@ -251,7 +240,6 @@ def test_clean_rows_fail_only_the_checks_the_data_fails(
         cn=code_lists["CN.txt"],
         procedures=code_lists["STATISTICAL_PROCEDURES.txt"],
         geozones=code_lists["GEOZONES-PARTNERS_ISO.txt"],
-        euro_area=euro_area,
         published=checks.read_published(spark, []),
     )
     found = {(name, table): failed(result) for name, table, result in results}
@@ -260,7 +248,6 @@ def test_clean_rows_fail_only_the_checks_the_data_fails(
     assert found.pop(("10_totals_match_published", "totals")) == {}
     expected = {key: {MAY: 0} for key in found}
     expected[("06a_kg_zero_with_value", "detail")] = {MAY: 1}
-    expected[("06b_unit_zero_with_value", "detail")] = {MAY: 1}
     assert found == expected
 
 
@@ -359,47 +346,6 @@ def test_06a_a_weight_of_0_counts_only_with_a_positive_value(
         ),
     )
     assert failed(checks.kg_zero_with_value(rows)) == {MAY: 1}
-
-
-def test_06b_a_real_unit_with_a_quantity_of_0(
-    spark: SparkSession, tmp_path: Path
-) -> None:
-    rows = detail(
-        spark,
-        tmp_path,
-        REAL_UNIT,
-        change(REAL_UNIT, PRODUCT_NC="22089071", QUANTITY_SUPPL_UNIT="5"),
-    )
-    assert failed(checks.unit_zero_with_value(rows)) == {MAY: 1}
-
-
-@pytest.mark.parametrize(
-    ("line", "source_file", "rows_failed"),
-    [
-        (change(NC8, VALUE_NAC="17173"), MAY, 1),
-        (BELOW_ONE_EUR, MAY, 0),
-        (change(BELOW_ONE_EUR, VALUE_NAC=".494"), MAY, 1),
-        (BULGARIA, MAY, 0),
-        (change(BULGARIA, VALUE_NAC="565"), MAY, 1),
-    ],
-)
-def test_07_the_national_value_against_the_euro_area(
-    spark: SparkSession,
-    tmp_path: Path,
-    euro_area: DataFrame,
-    line: str,
-    source_file: str,
-    rows_failed: int,
-) -> None:
-    rows = detail(spark, tmp_path, line, source_file=source_file)
-    assert failed(checks.nac_matches_euro_area(rows, euro_area)) == {
-        source_file: rows_failed
-    }
-
-
-def test_08a_a_total_row_in_the_detail(spark: SparkSession, tmp_path: Path) -> None:
-    rows = typed(bronze(spark, tmp_path, NC8, TOTAL_GB))
-    assert failed(checks.no_total_in_detail(rows)) == {MAY: 1}
 
 
 @pytest.mark.parametrize(

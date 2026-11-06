@@ -12,7 +12,8 @@ file for check 04, a group of rows for check 07.
 The rules, and the measurements behind each expected failure, are in
 docs/engineering-notes.md, section Gold, The checks of gold. The results are
 compared with their expectations by silver_checks.mismatches(), the rule of the
-silver checks. No check starts a Python worker: every rule is a Column.
+silver checks. No check starts a Python worker: every rule is a Column. As in
+silver, the number of a check retired is not reused.
 """
 
 from __future__ import annotations
@@ -38,7 +39,6 @@ from silver_checks import Expectation, _by_file
 # in that order wherever their results are sorted by name.
 CHECKS = (
     "01_rows_match_silver",
-    "02_no_null_key",
     "03_one_match_per_dimension",
     "04_value_matches_silver",
     "05_dimension_key_unique",
@@ -98,14 +98,6 @@ def rows_match_silver(fact: DataFrame, silver: DataFrame) -> DataFrame:
     )
 
 
-def no_null_key(fact: DataFrame) -> DataFrame:
-    """02: every key of the fact resolved to a version."""
-    keys = [name for name in fact.columns if name.endswith("_key")]
-    return _by_file(
-        fact, functools.reduce(operator.or_, [F.col(key).isNull() for key in keys])
-    )
-
-
 def one_match_per_dimension(
     fact: DataFrame, dimensions: Mapping[str, tuple[DataFrame, str]]
 ) -> DataFrame:
@@ -114,7 +106,8 @@ def one_match_per_dimension(
     dimensions maps each column of the fact to the dimension it points to and
     the column of the dimension it matches. A row that finds none is lost to
     an inner join, and one that finds two is counted twice: the star keeps the
-    rows of the fact only if every row finds one.
+    rows of the fact only if every row finds one. A key the fact could not
+    resolve to a version is NULL, and finds none.
     """
     flagged = fact
     off = []
@@ -179,8 +172,7 @@ def version_covers_month(
     versions maps each key column of the fact to the dimension it points to and
     the dimension's key column. A row counts when one of its versions starts
     after its period_date or ends before it, which a MERGE after the row was
-    built can bring about. A key without a version counts too, as in checks 02
-    and 03.
+    built can bring about. A key without a version counts too, as in check 03.
     """
     dated = fact.join(
         F.broadcast(dim_period.select("period", "period_date")), "period", "left"
@@ -269,8 +261,6 @@ def all_checks(
     return [
         ("01_rows_match_silver", "detail", rows_match_silver(detail, silver_detail)),
         ("01_rows_match_silver", "totals", rows_match_silver(totals, silver_totals)),
-        ("02_no_null_key", "detail", no_null_key(detail)),
-        ("02_no_null_key", "totals", no_null_key(totals)),
         (
             "03_one_match_per_dimension",
             "detail",

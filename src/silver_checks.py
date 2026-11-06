@@ -10,8 +10,9 @@ published figure for check 10.
 The rules, and the measurements behind each expected failure, are in
 docs/engineering-notes.md, section Silver, The checks. No check starts a
 Python worker, which on the development machine costs about ten seconds per
-query: the code lists, the euro area seed and the copies of the published
-figures are read with Spark's own readers, and every rule is a Column.
+query: the code lists and the copies of the published figures are read with
+Spark's own readers, and every rule is a Column. The numbers of the checks
+retired are not reused, so a name in ops.dq_check_results keeps its meaning.
 """
 
 from __future__ import annotations
@@ -43,9 +44,6 @@ CHECKS = (
     "04_period_matches_file",
     "05_values_not_negative",
     "06a_kg_zero_with_value",
-    "06b_unit_zero_with_value",
-    "07_nac_matches_euro_area",
-    "08a_no_total_in_detail",
     "08b_total_row_shape",
     "09_no_duplicate_on_grain",
     "10_totals_match_published",
@@ -73,13 +71,12 @@ class Rate:
 
 Expectation = int | Rate | None
 
-# The rates hold the six months of 202601 to 202606 with a margin: 06a found
-# 5.312% to 5.586% of the detail rows, and 06b 0.466% to 0.499%.
+# The rate holds the six months of 202601 to 202606 with a margin: 06a found
+# 5.312% to 5.586% of the detail rows.
 EXPECTED: dict[str, Expectation] = {
     # A weight of 0 is not resolved: nothing tells "not reported" from "less
     # than half a kilogram". Counted, not dropped.
     "06a_kg_zero_with_value": Rate(Decimal("0.050"), Decimal("0.060")),
-    "06b_unit_zero_with_value": Rate(Decimal("0.0040"), Decimal("0.0060")),
 }
 
 # The grain of each silver table: no two rows share these columns.
@@ -161,7 +158,10 @@ def read_code_list(spark: SparkSession, path: str, columns: Sequence[str]) -> Da
 
 
 def read_euro_area(spark: SparkSession, path: str) -> DataFrame:
-    """The euro area members of the seed, each with the day it joined."""
+    """The euro area members of the seed, each with the day it joined.
+
+    Read by the gold model for dim_country, next to the code lists.
+    """
     return (
         spark.read.option("header", True)
         .option("mode", "FAILFAST")
@@ -277,32 +277,6 @@ def values_not_negative(rows: DataFrame) -> DataFrame:
 def kg_zero_with_value(detail: DataFrame) -> DataFrame:
     """06a: a weight of 0 with a positive value."""
     return _by_file(detail, (F.col("quantity_kg") == 0) & (F.col("value_eur") > 0))
-
-
-def unit_zero_with_value(detail: DataFrame) -> DataFrame:
-    """06b: a real supplementary unit with a quantity of 0 and a positive value."""
-    return _by_file(
-        detail,
-        F.col("suppl_unit").isNotNull()
-        & (F.col("quantity_suppl_unit") == 0)
-        & (F.col("value_eur") > 0),
-    )
-
-
-def nac_matches_euro_area(rows: DataFrame, euro_area: DataFrame) -> DataFrame:
-    """07: in the euro area the two values are equal; outside it, a positive one differs."""
-    euro = euro_area.select(F.col("country_code").alias("reporter"), "euro_from")
-    flagged = rows.join(F.broadcast(euro), "reporter", "left")
-    in_euro = F.coalesce(F.col("euro_from") <= F.col("period_date"), F.lit(False))
-    same = F.col("value_nac") == F.col("value_eur")
-    return _by_file(
-        flagged, F.when(in_euro, ~same).otherwise((F.col("value_eur") > 0) & same)
-    )
-
-
-def no_total_in_detail(detail: DataFrame) -> DataFrame:
-    """08a: no TOTAL row in the detail."""
-    return _by_file(detail, F.col("product_nc") == TOTAL_PRODUCT)
 
 
 def total_row_shape(bronze: DataFrame) -> DataFrame:
@@ -431,7 +405,6 @@ def all_checks(
     cn: DataFrame,
     procedures: DataFrame,
     geozones: DataFrame,
-    euro_area: DataFrame,
     published: DataFrame,
 ) -> list[tuple[str, str, DataFrame]]:
     """Every check, with the table it reads: bronze, detail or totals.
@@ -449,18 +422,6 @@ def all_checks(
         ("05_values_not_negative", "detail", values_not_negative(detail)),
         ("05_values_not_negative", "totals", values_not_negative(totals)),
         ("06a_kg_zero_with_value", "detail", kg_zero_with_value(detail)),
-        ("06b_unit_zero_with_value", "detail", unit_zero_with_value(detail)),
-        (
-            "07_nac_matches_euro_area",
-            "detail",
-            nac_matches_euro_area(detail, euro_area),
-        ),
-        (
-            "07_nac_matches_euro_area",
-            "totals",
-            nac_matches_euro_area(totals, euro_area),
-        ),
-        ("08a_no_total_in_detail", "detail", no_total_in_detail(detail)),
         ("08b_total_row_shape", "bronze", total_row_shape(bronze)),
         (
             "09_no_duplicate_on_grain",

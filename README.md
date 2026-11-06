@@ -8,7 +8,7 @@ Databricks.
 Seven months of 2026, 35,253,450 rows, go through bronze, silver and gold written by hand in
 PySpark. One Databricks Job lands each month from Eurostat and takes it to the views of five
 business questions, and a watermark notices when Eurostat republishes a month under the same file
-name. 24 quality checks declare the failures they expect, and a result off its expectation stops
+name. 20 quality checks declare the failures they expect, and a result off its expectation stops
 the run.
 
 ## Business Questions
@@ -126,7 +126,7 @@ Three properties of this shape are deliberate.
 | Data quality | Checks in PySpark, results in `ops.dq_check_results` | Each check declares its expected failures, and a result off its expectation stops the run |
 | Orchestration | Databricks Jobs | Seven tasks in a chain, read from the GitHub repository, one run at a time, with a monthly schedule, paused |
 | Analysis | Spark SQL views and queries in `sql/` | One view per business question, one query per answer |
-| Tests and CI | pytest, ruff, mypy, GitHub Actions | 253 tests, 137 of them on a local Spark with Delta, over real rows of the landed files, on every push |
+| Tests and CI | pytest, ruff, mypy, GitHub Actions | 245 tests, 130 of them on a local Spark with Delta, over real rows of the landed files, on every push |
 
 **Why Spark, for 35 million rows.** The data comes as monthly files of about five million rows,
 and every layer is partitioned by month: each run reads, rewrites and checks whole months, which is
@@ -143,9 +143,9 @@ and enters the window on its own.
 | 1 | [`00_land`](notebooks/00_land.py): reads the listing, compares each month of the window with the Volume's manifest, lands the new and republished ones with a copy of the published totals, and downloads the code lists the Volume lacks | The Volume `eu_trade.landing.comext` | The window holds no month, or an archive has another size than the listing shows, or holds anything other than one `.dat` file |
 | 2 | [`01_bronze_ingest`](notebooks/01_bronze_ingest.py): the pending months, every column as text, with `_ingested_at`, `_source_file` and `_batch_id` | `bronze.comext_trade` | A file's rows differ from its lines, a row carries another month, a field is null, or a file was loaded in more than one batch |
 | 3 | [`02_silver_transform`](notebooks/02_silver_transform.py): typed and renamed in one `select`, the `TOTAL` rows apart, the HS levels derived | `silver.trade_detail`, `silver.trade_totals` | A file's bronze rows are not its detail and its totals |
-| 4 | [`03_silver_quality_checks`](notebooks/03_silver_quality_checks.py): 16 checks | `ops.dq_check_results` | A result is off its expectation |
+| 4 | [`03_silver_quality_checks`](notebooks/03_silver_quality_checks.py): 13 checks | `ops.dq_check_results` | A result is off its expectation |
 | 5 | [`04_gold_dimensional_model`](notebooks/04_gold_dimensional_model.py): the dimensions from the code lists and two seeds, the two with history by MERGE, then the facts | 2 facts and 5 dimensions in `gold` | A silver row is not exactly one fact row with every key resolved |
-| 6 | [`05_gold_quality_checks`](notebooks/05_gold_quality_checks.py): 8 checks, then the watermark | `ops.dq_check_results`, `ops.etl_watermark` | A result of either layer is off its expectation |
+| 6 | [`05_gold_quality_checks`](notebooks/05_gold_quality_checks.py): 7 checks, then the watermark | `ops.dq_check_results`, `ops.etl_watermark` | A result of either layer is off its expectation |
 | 7 | [`06_gold_views`](notebooks/06_gold_views.py): the six views, then the answers | 6 views in `gold` | A view loses, adds or splits the value of the fact rows it reads |
 
 Notebooks 01 to 05 process only the pending months (see [Incremental Load](#incremental-load)),
@@ -251,8 +251,8 @@ dimension keeps them, and a fact row joins the version that covers its month. Bu
 Bulgaria adopted the euro on 2026-01-01, and Eurostat's relation of the euro area has no row for
 it: it was last published on 2025-02-24. The euro area comes from a seed instead,
 [`reference/euro_area_members.csv`](reference/euro_area_members.csv), with the source of each row.
-Against the relation as published, silver check 07 flags every row of Bulgaria with a value:
-101,142 rows by product in the May 2026 file of 2026-09-15.
+Built from the relation as published, `dim_country` would leave Bulgaria outside the euro area for
+all of 2026, and with it 101,142 rows by product of the May 2026 file of 2026-09-15.
 
 The changes of 2026 went through the MERGE of the real tables while the model was developed.
 Written as they stood on 2025-12-31 and merged with today's, `dim_country` had one version
@@ -268,7 +268,7 @@ and their numbers, is in the [engineering notes](docs/engineering-notes.md#gold)
 
 ## Data Quality
 
-**24 checks, 16 on silver and 8 on gold, and over the seven months every one found exactly the
+**20 checks, 13 on silver and 7 on gold, and over the seven months every one found exactly the
 failures it expects.** A check writes one row per table and file to `ops.dq_check_results`, in a
 schema apart from the data: what it read, how many rows broke its rule, and what it expected, a
 count or a range for a share of the rows. The notebook reads its results back and stops the run on
@@ -282,10 +282,9 @@ What the checks found in the full months of January to July 2026:
 | Check | Rule | Found |
 |---|---|---|
 | Silver 06a | A weight of 0 with a positive value: counted, not dropped | 271,767 to 283,190 rows a month, 5.31% to 5.62% of the rows by product. Every month expects 5.0% to 6.0% |
-| Silver 06b | A supplementary unit with a quantity of 0 and a positive value | 22,201 to 24,299 rows, 0.44% to 0.50%. Every month expects 0.40% to 0.60% |
 | Silver 10 | The totals by trade type and flow, and the UK, within 0.05 M EUR of the figures Eurostat publishes, from a copy saved with the files of the same publication | 0 of the 6 figures off, in every month |
 | Gold 07 | Per reporter, trade type, flow and procedure, the rows by product within 0.01 M EUR of the totals | 2 of 239 to 242 groups in every month: France's intra-EU imports and exports, the only groups beyond the tolerance ([Limitations](#limitations)) |
-| The other 20 | Codes valid on the month's date, values not negative, the month of the file, every `TOTAL` row of its expected shape and none in the detail, no duplicate on the grain, trade type agreeing with EU membership, lossless casts, nulls only from a sentinel; in gold, each silver row one fact row, every key resolved to exactly one row of each dimension, values equal to silver's, unique keys, versions that do not overlap and that cover the month of each fact row | 0 |
+| The other 17 | Codes valid on the month's date, values not negative, the month of the file, every `TOTAL` row of its expected shape, no duplicate on the grain, trade type agreeing with EU membership, lossless casts, nulls only from a sentinel; in gold, each silver row one fact row, every key resolved to exactly one row of each dimension, values equal to silver's, unique keys, versions that do not overlap and that cover the month of each fact row | 0 |
 
 **A check off by one row stops the run.** With the expectation of 06a moved by one row, up and then
 down, the run wrote its results and stopped, naming the check, the table, the file and both counts.
@@ -398,8 +397,8 @@ the answers of [`sql/analysis_queries.sql`](sql/analysis_queries.sql).
 .venv\Scripts\python -m mypy src notebooks
 ```
 
-253 tests. The 116 not marked `spark` start no JVM, and run wherever the lock is installed. The
-137 marked `spark` start a local Spark with Delta, which needs a JDK 17 and `JAVA_HOME`, and on
+245 tests. The 115 not marked `spark` start no JVM, and run wherever the lock is installed. The
+130 marked `spark` start a local Spark with Delta, which needs a JDK 17 and `JAVA_HOME`, and on
 Windows can hang at the start of its first session. The CI runs ruff, mypy and the whole suite on
 every push, on Ubuntu, in 8 to 10 minutes
 ([Tests and lint](docs/engineering-notes.md#tests-and-lint)).
