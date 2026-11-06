@@ -1,9 +1,7 @@
 """The silver transformation on a local Spark, over real rows of the landed files.
 
 Every row below is a line of full_v2_202605.csv, from the 2026-09-15
-publication, unless a test changes a field to make its point. XI and XU are
-lines of full_partxixu_v2_202605.csv, the subset of the month with the United
-Kingdom's partners, which splits GB into Northern Ireland and the rest. The rows reach
+publication, unless a test changes a field to make its point. The rows reach
 silver as in the notebook: written to a landed file and read with the bronze
 reader. Uses the module's Spark session from conftest.py. Run without these
 tests with -m "not spark".
@@ -30,12 +28,6 @@ pytestmark = pytest.mark.spark
 SOURCE_FILE = "full_v2_202605.csv"
 
 TOTAL = "AT,GB,E,TOTAL,TOTAL,TOTAL,TOTAL,TOTAL,TOTAL,TO,1,1,NO_SU,202605,109475558,109475558,6811188,0"
-XI = (
-    "AT,XI,L,04032031,02231,1051,1051,112,113101,01,2,1,NO_SU,202605,11148,11148,3228,0"
-)
-XU = (
-    "AT,XU,M,02013000,01112,1011,1011,122,113101,01,2,1,NO_SU,202605,17172,17172,1643,0"
-)
 NC8 = (
     "AT,GB,E,02013000,01112,1011,1011,122,113101,01,2,1,NO_SU,202605,17172,17172,1643,0"
 )
@@ -53,7 +45,7 @@ BELOW_ONE_EUR = (
 # A real supplementary unit, with a quantity of 0.
 REAL_UNIT = "AT,GB,E,22089069,11249,1101,1101,122,113101,04,2,1,L_ALC_100PCT,202605,522,522,30,0"
 
-ALL_ROWS = (TOTAL, XI, XU, NC8, CHAPTER_X, HS4_X, HS6_X, BELOW_ONE_EUR, REAL_UNIT)
+ALL_ROWS = (TOTAL, NC8, CHAPTER_X, HS4_X, HS6_X, BELOW_ONE_EUR, REAL_UNIT)
 
 
 def bronze(spark: SparkSession, folder: Path, *lines: str, **changes: str) -> DataFrame:
@@ -89,12 +81,9 @@ def test_a_dataframe_built_from_python_rows_reads(spark: SparkSession) -> None:
     assert [tuple(row) for row in df.collect()] == [("AT", "GB")]
 
 
-def test_xi_and_xu_are_left_out_and_the_totals_go_apart(
-    spark: SparkSession, tmp_path: Path
-) -> None:
+def test_the_totals_go_apart(spark: SparkSession, tmp_path: Path) -> None:
     detail, totals = split_bronze(bronze(spark, tmp_path, *ALL_ROWS))
-    rows = detail.collect()
-    assert sorted(row["product_nc"] for row in rows) == [
+    assert sorted(row["product_nc"] for row in detail.collect()) == [
         "02013000",
         "22089069",
         "283321XX",
@@ -102,9 +91,6 @@ def test_xi_and_xu_are_left_out_and_the_totals_go_apart(
         "28XXXXXX",
         "29212900",
     ]
-    assert {(row["partner"], row["_source_file"]) for row in rows} == {
-        ("GB", SOURCE_FILE)
-    }
     total = only(totals)
     assert (total["reporter"], total["partner"], total["value_eur"]) == (
         "AT",

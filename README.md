@@ -8,7 +8,7 @@ Databricks.
 Seven months of 2026, 35,253,450 rows, go through bronze, silver and gold written by hand in
 PySpark. One Databricks Job lands each month from Eurostat and takes it to the views of five
 business questions, and a watermark notices when Eurostat republishes a month under the same file
-name. 25 quality checks declare the failures they expect, and a result off its expectation stops
+name. 24 quality checks declare the failures they expect, and a result off its expectation stops
 the run.
 
 ## Business Questions
@@ -79,7 +79,7 @@ flowchart TB
         LAND["00_land<br/>new and republished months, through the driver's disk"]
         VOL["Volume eu_trade.landing.comext<br/>CSV, code lists, copy of the published totals, manifest.csv"]
         BR["bronze.comext_trade<br/>every column as text, partitioned by month"]
-        SI["silver.trade_detail and trade_totals<br/>typed, TOTAL rows apart, no XI or XU"]
+        SI["silver.trade_detail and trade_totals<br/>typed, TOTAL rows apart"]
         GO["gold<br/>2 facts, 5 dimensions"]
         VW["gold<br/>6 views, one per business question"]
         OPS["ops<br/>dq_check_results, etl_watermark"]
@@ -142,8 +142,8 @@ and enters the window on its own.
 |---|---|---|---|
 | 1 | [`00_land`](notebooks/00_land.py): reads the listing, compares each month of the window with the Volume's manifest, lands the new and republished ones with a copy of the published totals, and downloads the code lists the Volume lacks | The Volume `eu_trade.landing.comext` | The window holds no month, or an archive has another size than the listing shows, or holds anything other than one `.dat` file |
 | 2 | [`01_bronze_ingest`](notebooks/01_bronze_ingest.py): the pending months, every column as text, with `_ingested_at`, `_source_file` and `_batch_id` | `bronze.comext_trade` | A file's rows differ from its lines, a row carries another month, a field is null, or a file was loaded in more than one batch |
-| 3 | [`02_silver_transform`](notebooks/02_silver_transform.py): typed and renamed in one `select`, the `TOTAL` rows apart, XI and XU out, the HS levels derived | `silver.trade_detail`, `silver.trade_totals` | A file's bronze rows are not its detail, its totals and the XI and XU rows left out |
-| 4 | [`03_silver_quality_checks`](notebooks/03_silver_quality_checks.py): 17 checks | `ops.dq_check_results` | A result is off its expectation |
+| 3 | [`02_silver_transform`](notebooks/02_silver_transform.py): typed and renamed in one `select`, the `TOTAL` rows apart, the HS levels derived | `silver.trade_detail`, `silver.trade_totals` | A file's bronze rows are not its detail and its totals |
+| 4 | [`03_silver_quality_checks`](notebooks/03_silver_quality_checks.py): 16 checks | `ops.dq_check_results` | A result is off its expectation |
 | 5 | [`04_gold_dimensional_model`](notebooks/04_gold_dimensional_model.py): the dimensions from the code lists and two seeds, the two with history by MERGE, then the facts | 2 facts and 5 dimensions in `gold` | A silver row is not exactly one fact row with every key resolved |
 | 6 | [`05_gold_quality_checks`](notebooks/05_gold_quality_checks.py): 8 checks, then the watermark | `ops.dq_check_results`, `ops.etl_watermark` | A result of either layer is off its expectation |
 | 7 | [`06_gold_views`](notebooks/06_gold_views.py): the six views, then the answers | 6 views in `gold` | A view loses, adds or splits the value of the fact rows it reads |
@@ -268,7 +268,7 @@ and their numbers, is in the [engineering notes](docs/engineering-notes.md#gold)
 
 ## Data Quality
 
-**25 checks, 17 on silver and 8 on gold, and over the seven months every one found exactly the
+**24 checks, 16 on silver and 8 on gold, and over the seven months every one found exactly the
 failures it expects.** A check writes one row per table and file to `ops.dq_check_results`, in a
 schema apart from the data: what it read, how many rows broke its rule, and what it expected, a
 count or a range for a share of the rows. The notebook reads its results back and stops the run on
@@ -285,7 +285,7 @@ What the checks found in the full months of January to July 2026:
 | Silver 06b | A supplementary unit with a quantity of 0 and a positive value | 22,201 to 24,299 rows, 0.44% to 0.50%. Every month expects 0.40% to 0.60% |
 | Silver 10 | The totals by trade type and flow, and the UK, within 0.05 M EUR of the figures Eurostat publishes, from a copy saved with the files of the same publication | 0 of the 6 figures off, in every month |
 | Gold 07 | Per reporter, trade type, flow and procedure, the rows by product within 0.01 M EUR of the totals | 2 of 239 to 242 groups in every month: France's intra-EU imports and exports, the only groups beyond the tolerance ([Limitations](#limitations)) |
-| The other 21 | Codes valid on the month's date, values not negative, the month of the file, every `TOTAL` row of its expected shape and none in the detail, no XI or XU row, no duplicate on the grain, trade type agreeing with EU membership, lossless casts, nulls only from a sentinel; in gold, each silver row one fact row, every key resolved to exactly one row of each dimension, values equal to silver's, unique keys, versions that do not overlap and that cover the month of each fact row | 0 |
+| The other 20 | Codes valid on the month's date, values not negative, the month of the file, every `TOTAL` row of its expected shape and none in the detail, no duplicate on the grain, trade type agreeing with EU membership, lossless casts, nulls only from a sentinel; in gold, each silver row one fact row, every key resolved to exactly one row of each dimension, values equal to silver's, unique keys, versions that do not overlap and that cover the month of each fact row | 0 |
 
 **A check off by one row stops the run.** With the expectation of 06a moved by one row, up and then
 down, the run wrote its results and stopped, naming the check, the table, the file and both counts.
@@ -529,9 +529,8 @@ procedure 2 accounts for 101.0, 100.6 and 77.0 of it. The data does not say why 
   and
   [rdiguglielmo/us-restaurant-financials-analysis](https://github.com/rdiguglielmo/us-restaurant-financials-analysis).
 - **A way to run the pipeline locally.** The transformation logic was developed and verified on a
-  local Spark 4.2 with Delta 4.4, first over the partial files of each month, to spend no compute
-  quota of Free Edition. That setup is not part of this repository: here a local Spark is only the
-  engine of the tests.
+  local Spark 4.2 with Delta 4.4, to spend no compute quota of Free Edition. That setup is not part
+  of this repository: here a local Spark is only the engine of the tests.
 - **The data, and an export of gold.** The landed files live in the Volume, where the first task
   of the Job puts them: a month is 45 to 48 MB to download and 400 to 423 MB extracted. The Job
   rebuilds every table from them, and [Results](#results) gives every number with the query behind

@@ -36,16 +36,8 @@ def change(line: str, **fields: str) -> str:
 MAY = "full_v2_202605.csv"
 JULY = "full_v2_202607.csv"
 
-# Lines of full_v2_202605.csv. The rows with partner XI or XU are lines of
-# full_partxixu_v2_202605.csv, the subset of the month with the United
-# Kingdom's partners, which splits GB into Northern Ireland, XI, and the rest,
-# XU: silver leaves them out. GB is exactly XI plus XU in the three TOTAL rows.
+# Lines of full_v2_202605.csv.
 TOTAL_GB = "AT,GB,E,TOTAL,TOTAL,TOTAL,TOTAL,TOTAL,TOTAL,TO,1,1,NO_SU,202605,109475558,109475558,6811188,0"
-TOTAL_XI = "AT,XI,L,TOTAL,TOTAL,TOTAL,TOTAL,TOTAL,TOTAL,TO,1,1,NO_SU,202605,1920917,1920917,230771,0"
-TOTAL_XU = "AT,XU,M,TOTAL,TOTAL,TOTAL,TOTAL,TOTAL,TOTAL,TO,1,1,NO_SU,202605,107554641,107554641,6580417,0"
-XI = (
-    "AT,XI,L,04032031,02231,1051,1051,112,113101,01,2,1,NO_SU,202605,11148,11148,3228,0"
-)
 NC8 = (
     "AT,GB,E,02013000,01112,1011,1011,122,113101,01,2,1,NO_SU,202605,17172,17172,1643,0"
 )
@@ -66,22 +58,12 @@ REAL_UNIT = "AT,GB,E,22089069,11249,1101,1101,122,113101,04,2,1,L_ALC_100PCT,202
 BULGARIA = (
     "BG,GB,E,01061900,00190,0149,0148,111,111100,01,2,1,NO_SU,202605,289,289,23,0"
 )
-# A line of full_partxixu_v2_202607.csv, republished since: VALUE_NAC in lev,
-# though Bulgaria is in the euro area.
-BULGARIA_IN_LEV = "BG,GB,E,99XXXXXX,9XXXX,XXXX,XXXX,700,X1XXXX,XX,1,1,NO_SU,202607,1750056,894789.424,0,0"
 
 PRODUCT_ROWS = (NC8, CHAPTER_X, HS4_X, HS6_X, BELOW_ONE_EUR, REAL_UNIT)
 
 # Rows that break nothing but checks 06a (BELOW_ONE_EUR) and 06b (REAL_UNIT),
-# as in the data. In these products GB is XU alone, and the file has each XU
-# row, the same line with partner XU and trade type M.
-CLEAN_ROWS = (
-    TOTAL_GB,
-    TOTAL_XI,
-    TOTAL_XU,
-    *PRODUCT_ROWS,
-    *(change(line, PARTNER="XU", TRADE_TYPE="M") for line in PRODUCT_ROWS),
-)
+# as in the data.
+CLEAN_ROWS = (TOTAL_GB, *PRODUCT_ROWS)
 
 # Lines of the landed code lists, with their own line endings.
 CODE_LISTS = {
@@ -329,6 +311,10 @@ def test_02_a_product_neither_valid_nor_an_x_code(
     [
         ({"FLOW": "3"}, 1),
         ({"TRADE_TYPE": "X"}, 1),
+        # The trade types of Northern Ireland and of the rest of the United
+        # Kingdom, in the subset Eurostat publishes next to each full month.
+        ({"TRADE_TYPE": "L"}, 1),
+        ({"TRADE_TYPE": "M"}, 1),
         # Valid until 2009.
         ({"STAT_PROCEDURE": "5"}, 1),
         # Not in the list.
@@ -395,7 +381,6 @@ def test_06b_a_real_unit_with_a_quantity_of_0(
         (change(BELOW_ONE_EUR, VALUE_NAC=".494"), MAY, 1),
         (BULGARIA, MAY, 0),
         (change(BULGARIA, VALUE_NAC="565"), MAY, 1),
-        (BULGARIA_IN_LEV, JULY, 1),
     ],
 )
 def test_07_the_national_value_against_the_euro_area(
@@ -431,11 +416,6 @@ def test_08b_a_total_row_of_another_shape(
 ) -> None:
     rows = bronze(spark, tmp_path, change(TOTAL_GB, **fields), NC8)
     assert failed(checks.total_row_shape(rows)) == {MAY: 1}
-
-
-def test_08c_an_xi_row_in_a_silver_table(spark: SparkSession, tmp_path: Path) -> None:
-    rows = typed(bronze(spark, tmp_path, NC8, XI))
-    assert failed(checks.no_xi_xu(rows)) == {MAY: 1}
 
 
 def test_09_a_repeated_key_counts_its_rows(spark: SparkSession, tmp_path: Path) -> None:

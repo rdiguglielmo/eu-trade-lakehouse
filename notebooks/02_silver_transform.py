@@ -8,7 +8,7 @@
 # MAGIC
 # MAGIC Turns the bronze rows of the pending months into two typed tables: the rows by
 # MAGIC product in `trade_detail`, and the `TOTAL` rows, which sum the others, in
-# MAGIC `trade_totals`. Neither holds XI or XU, since GB is exactly their sum.
+# MAGIC `trade_totals`.
 # MAGIC
 # MAGIC Responsibilities:
 # MAGIC   1. Read from bronze the files of the pending months only (`src/watermark.py`), and stop
@@ -16,8 +16,8 @@
 # MAGIC   2. Type, name and split the rows: see `src/silver.py`.
 # MAGIC   3. Replace the pending months in both tables, so a re-run writes the same rows again
 # MAGIC      instead of adding them.
-# MAGIC   4. Check the tables against bronze: per file, the bronze rows are the detail, the
-# MAGIC      totals and the XI and XU rows left out.
+# MAGIC   4. Check the tables against bronze: per file, the bronze rows are the detail and the
+# MAGIC      totals.
 # MAGIC
 # MAGIC The data quality checks run in `03_silver_quality_checks`.
 # MAGIC
@@ -59,7 +59,7 @@ from config import (
     qualified,
     window_from,
 )
-from silver import UK_SPLIT_PARTNERS, split_bronze
+from silver import split_bronze
 from watermark import landed_csv_paths, pending_in_window
 
 spark = SparkSession.builder.getOrCreate()
@@ -166,12 +166,11 @@ print(f"totals_written: {totals_written:,}")
 # COMMAND ----------
 
 # DBTITLE 1,Check the tables against bronze
-# Per file, every bronze row is in the detail, in the totals, or is an XI or XU
-# row, which silver leaves out. A file with rows of an earlier batch, or a file
-# the configuration does not name in the pending months, fails too.
+# Per file, every bronze row is in the detail or in the totals. A file with rows
+# of an earlier batch, or a file the configuration does not name in the pending
+# months, fails too.
 bronze_by_file = df_bronze.groupBy("_source_file").agg(
     F.count("*").alias("bronze_rows"),
-    F.sum(F.col("PARTNER").isin(*UK_SPLIT_PARTNERS).cast("int")).alias("xi_xu_rows"),
 )
 
 
@@ -200,7 +199,7 @@ failures = [
     row["_source_file"]
     for row in check.collect()
     if None in (row["bronze_rows"], row["detail_rows"], row["totals_rows"])
-    or row["bronze_rows"] != row["detail_rows"] + row["totals_rows"] + row["xi_xu_rows"]
+    or row["bronze_rows"] != row["detail_rows"] + row["totals_rows"]
     or row["detail_batches"] != 1
     or row["totals_batches"] != 1
 ]

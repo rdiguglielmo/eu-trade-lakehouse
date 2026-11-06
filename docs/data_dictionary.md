@@ -35,7 +35,7 @@ One row per data row of a landed file, as landed. Partitioned by `PERIOD`.
 
 ### `silver.trade_detail`
 
-One row per row by product, without XI or XU. Grain: `reporter`, `partner`, `product_nc`, the five
+One row per row by product. Grain: `reporter`, `partner`, `product_nc`, the five
 parallel classifications, `flow`, `stat_procedure`, `period`. Partitioned by `period`.
 
 | Column | Type | Holds |
@@ -56,7 +56,7 @@ parallel classifications, `flow`, `stat_procedure`, `period`. Partitioned by `pe
 
 ### `silver.trade_totals`
 
-One row per `TOTAL` row of the source, without XI or XU. Grain: `reporter`, `partner`, `flow`,
+One row per `TOTAL` row of the source. Grain: `reporter`, `partner`, `flow`,
 `stat_procedure`, `period`. Partitioned by `period`. A `TOTAL` row reads `TOTAL` in every
 classification, `NO_SU` and a quantity of 0, so those columns are left out.
 
@@ -111,8 +111,8 @@ One row per version of a partner code, 390 rows. Loaded by MERGE on `(country_co
 | `country_key` | bigint | `xxhash64(country_code, valid_from)` |
 | `country_code` | string | The code, from `PARTNERS_ISO.txt` |
 | `country_name` | string | Its name in that version |
-| `is_country` | boolean | False for the 12 codes of `reference/partner_special_codes.csv` |
-| `partner_category` | string | `country`, or the seed's category: `uk_split`, `high_seas`, `stores_and_provisions`, `not_specified`, `confidential` |
+| `is_country` | boolean | False for the 10 codes of `reference/partner_special_codes.csv` |
+| `partner_category` | string | `country`, or the seed's category: `high_seas`, `stores_and_provisions`, `not_specified`, `confidential` |
 | `is_intra_eu` | boolean | The code belongs to zone 1010 of `GEOZONES-PARTNERS_ISO.txt`: the member states and the intra-EU codes QR, QV and QY |
 | `is_euro_area` | boolean | From `reference/euro_area_members.csv` |
 | `region_zone`, `region` | string | The continent zone, 5100 Europe to 5900 not specified, and its name |

@@ -298,17 +298,11 @@ never brings the incomplete month into (The window of a run).
 
 No partner code is an aggregate. The 246 partner codes of the full month of
 202605 are all valid in `PARTNERS_ISO.txt` on 2026-05-01, and none is a
-geographic zone. Twelve codes are not single countries;
+geographic zone. Ten codes are not single countries;
 [`reference/partner_special_codes.csv`](../reference/partner_special_codes.csv)
-lists them with their treatment: XI and XU never count next to GB, and the Q
-codes (high seas, stores and provisions, partner not specified, partner
-confidential) count in totals but are not countries in a ranking.
-
-XI and XU, Northern Ireland and the United Kingdom without it, add up to GB to
-the cent. They appear, as `TRADE_TYPE` `L` and `M`, only in the subset of each
-month with the partners of the United Kingdom, which the landing never reads
-(Archive format): a full month carries GB alone. Silver leaves XI and XU out
-all the same, and check 08c confirms that none reaches it.
+lists them: the Q codes (high seas, stores and provisions, partner not
+specified, partner confidential) count in totals but are not countries in a
+ranking.
 
 ## The partner is not always where the goods come from
 
@@ -469,7 +463,7 @@ transformation, below). The checks live in `src/silver_checks.py`, with the
 failures each one expects, and `notebooks/03_silver_quality_checks.py` runs
 them (The checks, below).
 
-### Two tables, without XI or XU
+### Two tables
 
 | Table | Holds | Grain |
 |---|---|---|
@@ -485,8 +479,6 @@ them (The checks, below).
   X code can come in several rows, one per SITC code (Product codes that are not
   eight digits). Without them, the full month of 202605 has 2,932 detail rows in
   1,178 duplicated keys.
-- XI and XU rows do not reach silver, though a full month carries neither
-  (Partner codes that are not countries).
 - The Q codes stay, since they count in totals. That they are not countries
   belongs to the country dimension, from `reference/partner_special_codes.csv`.
 
@@ -540,12 +532,12 @@ The notebook reads from bronze the files of the pending months, and stops if
 one is missing. It writes each table with an overwrite of those months only
 (`replaceWhere` on `period`, the partition column), so a second run replaces
 its rows instead of adding them; the same write creates the table on the first
-run. Then it checks each file: its bronze rows are the detail, the totals and
-the XI and XU rows left out, and each table holds one batch of it. Any other
-result stops the run. That check lives in the notebook, and no test covers it.
+run. Then it checks each file: its bronze rows are the detail and the totals,
+and each table holds one batch of it. Any other result stops the run. That
+check lives in the notebook, and no test covers it.
 
 Measured on the full month of 202605 as published on 2026-09-15, with the
-counts per table of "Two tables, without XI or XU" above:
+counts per table of "Two tables" above:
 
 | File | `is_x_code` | `hs6` NULL | `hs4` NULL | `suppl_unit` NULL |
 |---|---:|---:|---:|---:|
@@ -610,7 +602,6 @@ expectation of 0 then fails the run.
 | `07_nac_matches_euro_area` | A reporter in the euro area on `period_date` has `value_nac` = `value_eur`; outside it, with a positive value, the two differ | both tables | 0 |
 | `08a_no_total_in_detail` | No `TOTAL` row in the detail | detail | 0 |
 | `08b_total_row_shape` | Every `TOTAL` row reads `TOTAL`, `TO`, `NO_SU` and 0 | bronze | 0 |
-| `08c_no_xi_xu` | No XI or XU row | both tables | 0 |
 | `09_no_duplicate_on_grain` | No duplicate on the grain | both tables | 0 |
 | `10_totals_match_published` | Totals by `trade_type` and `flow` against EU27_2020 and EXT_EU27_2020, and GB against UK: within 0.05 M EUR of the figures of the same publication | totals | 0 of 6, or not evaluated without a copy |
 | `11_trade_type_matches_eu` | `trade_type` is I exactly when the partner belongs to zone 1010 of `GEOZONES-PARTNERS_ISO.txt` on `period_date` | both tables | 0 |
@@ -761,7 +752,7 @@ questions, below).
   are listed both in 5100 and in 5900, and take 5900: they are not countries.
   On the dates of the data every code has exactly one: 48, 59, 50, 49, 33 and 7
   codes. `ZZ` ("No data, work code") has none, and is not in the data.
-- `is_country` is false, and `partner_category` the seed's, for the 12 codes of
+- `is_country` is false, and `partner_category` the seed's, for the 10 codes of
   `reference/partner_special_codes.csv`; every other code is a country.
 - **The X codes come from `CN.txt`**, which lists them (Code lists). Every X
   code of the seven months has a row valid in its month, so `dim_product` needs
@@ -1219,9 +1210,9 @@ only, and `psutil`, which `py7zr` needs everywhere but Cygwin. Both install
 everywhere, unused where they are not needed.
 
 The transformation logic was developed and verified on a local Spark 4.2 with
-Delta 4.4, first over the partial files of each month, to spend no compute
-quota of Free Edition. That setup is not part of this repository: here Spark
-runs locally only as the engine of the tests (Tests and lint).
+Delta 4.4, to spend no compute quota of Free Edition. That setup is not part
+of this repository: here Spark runs locally only as the engine of the tests
+(Tests and lint).
 
 ### Databricks serverless
 
@@ -1455,7 +1446,7 @@ CI runs them on Ubuntu.
 | `tests/test_job.py` | The definition of the Job: every key a setting the SDK knows, which it would otherwise drop; a task per notebook, in their order, each depending on the one before; one run at a time, and no task declaring a cluster; only the landing installing `py7zr`, at the version of the lock; the monthly schedule paused; the two parameters the window; and each notebook from 00 to 05 creating its widgets before it reads them. Starts no JVM |
 | `tests/test_deploy_job.py` | The Job created where the workspace has none of its name, its settings replaced where it has one, and two of its name stopping the run, against a fake of the Jobs API |
 | `tests/test_bronze.py` | The bronze reader on a local Spark: what it refuses and what it lets through |
-| `tests/test_silver.py` | The silver transformation on a local Spark, over real rows of the landed files read with the bronze reader: XI and XU left out and the totals apart, the HS levels of each kind of code, `NO_SU` and the zeros that stay, exact decimals, the fourth decimal rounded, a value that is not a number failing, the columns and types of each table. And that a DataFrame built from a Python list reads, which needs `PYSPARK_PYTHON` |
+| `tests/test_silver.py` | The silver transformation on a local Spark, over real rows of the landed files read with the bronze reader: the totals apart, the HS levels of each kind of code, `NO_SU` and the zeros that stay, exact decimals, the fourth decimal rounded, a value that is not a number failing, the columns and types of each table. And that a DataFrame built from a Python list reads, which needs `PYSPARK_PYTHON` |
 | `tests/test_silver_checks.py` | The quality checks on a local Spark. Every check over real rows of the landed files fails only where the data does, in 06a and 06b; each one, alone, counts a real row broken on purpose and lets the row as landed pass. With real lines of the code lists: CRLF endings, a double quote in a description, a row with a field missing, codes valid only before the month. The copies of the published figures: a match, a figure 0.076 M EUR off, a figure without a counterpart, a file without a copy not evaluated |
 | `tests/test_silver_expectations.py` | The expected failures and the comparison: every expectation naming a check; the rule of every month, and check 10 not evaluated for a file landed without a copy; a rate turned into a range rounded inward, and into 0 to 0 over nothing checked; a count above or below its expectation, at either end of its range or beyond it, NULL against a number either way, a check without a result and a name that is not a check. Starts no JVM |
 | `tests/test_gold.py` | The gold model on a local Spark, over real rows of the landed files and real lines of the code lists. The versions: Bulgaria's three, Germany's two rows of the same name kept, QY in zone 5900 and not a country, the United Kingdom leaving the EU; an X code that stops at its chapter, an eight-digit code that reaches every level, a parent row that adds no version, the codes that close and open with 2026. The dimensions as of 2025-12-31, built by the helper `as_of()`, and the MERGE: a first load, the changes of 2026, the same MERGE again, a repeated key refused, a version missing from the source counted. The keys of the facts: one fact row per silver row, Bulgaria's euro-area version in May 2026, a code the dimension does not hold left NULL, the columns and types. Its Delta tables are written by path below the test's folder, never to a metastore |
@@ -1494,7 +1485,6 @@ tests it failed:
 | The comparison without the range | Every count within, at, or outside its range: without the range it is compared with a count of NULL |
 | The range rounded to the nearest row, not inward | A rate turned into a range |
 | Check 08 over the facts of the run only | Check 08 reading every month of the facts |
-| XI and XU kept | XI and XU left out |
 | The HS levels without the check for digits | `28XXXXXX` and `2833XXXX`. `283321XX` has digits at every level it reaches, so it passes either way |
 | `NO_SU` kept | `NO_SU` to NULL |
 | `try_cast` in place of `cast` | The value that is not a number |

@@ -6,7 +6,7 @@
 # MAGIC %md
 # MAGIC # 03 - Silver quality checks (EU Trade Lakehouse)
 # MAGIC
-# MAGIC Runs the twelve data quality checks of the silver layer, seventeen counting their
+# MAGIC Runs the twelve data quality checks of the silver layer, sixteen counting their
 # MAGIC parts, over the files of the pending months. Each writes one row per table it reads
 # MAGIC and per file to `ops.dq_check_results`, next to the failures it is expected to find:
 # MAGIC a count or a range. A count off its expectation, up or down, fails

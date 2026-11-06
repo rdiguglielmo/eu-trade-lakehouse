@@ -31,7 +31,6 @@ from silver import (
     NO_SUPPLEMENTARY_UNIT,
     QUANTITY_TYPE,
     TOTAL_PRODUCT,
-    UK_SPLIT_PARTNERS,
     VALUE_TYPE,
 )
 
@@ -48,7 +47,6 @@ CHECKS = (
     "07_nac_matches_euro_area",
     "08a_no_total_in_detail",
     "08b_total_row_shape",
-    "08c_no_xi_xu",
     "09_no_duplicate_on_grain",
     "10_totals_match_published",
     "11_trade_type_matches_eu",
@@ -228,11 +226,6 @@ def _flag_valid(rows: DataFrame, column: str, valid: DataFrame, flag: str) -> Da
     )
 
 
-def _kept(bronze: DataFrame) -> DataFrame:
-    """The bronze rows silver keeps: all but XI and XU."""
-    return bronze.filter(~F.col("PARTNER").isin(*UK_SPLIT_PARTNERS))
-
-
 def _exact(column: str) -> Column:
     """A bronze value cast without loss, or NULL if it is not a number."""
     return F.col(column).try_cast(EXACT_TYPE)
@@ -317,7 +310,7 @@ def total_row_shape(bronze: DataFrame) -> DataFrame:
 
     Read from bronze: the totals table leaves those columns out.
     """
-    totals = _kept(bronze).filter(F.col("PRODUCT_NC") == TOTAL_PRODUCT)
+    totals = bronze.filter(F.col("PRODUCT_NC") == TOTAL_PRODUCT)
     shape = functools.reduce(
         operator.and_,
         [F.col(name) == TOTAL_PRODUCT for name in CLASSIFICATIONS],
@@ -326,11 +319,6 @@ def total_row_shape(bronze: DataFrame) -> DataFrame:
         & _exact("QUANTITY_SUPPL_UNIT").eqNullSafe(0),
     )
     return _by_file(totals, ~F.coalesce(shape, F.lit(False)))
-
-
-def no_xi_xu(rows: DataFrame) -> DataFrame:
-    """08c: no XI or XU row."""
-    return _by_file(rows, F.col("partner").isin(*UK_SPLIT_PARTNERS))
 
 
 def no_duplicate_on_grain(rows: DataFrame, grain: Sequence[str]) -> DataFrame:
@@ -398,7 +386,7 @@ def cast_lossless(bronze: DataFrame) -> DataFrame:
         | ~F.col(name).try_cast(silver_type).eqNullSafe(_exact(name))
         for name, silver_type in CAST_COLUMNS.items()
     ]
-    return _by_file(_kept(bronze), functools.reduce(operator.or_, lost))
+    return _by_file(bronze, functools.reduce(operator.or_, lost))
 
 
 def null_only_from_sentinel(rows: DataFrame) -> DataFrame:
@@ -428,7 +416,7 @@ def no_su_quantity_zero(bronze: DataFrame) -> DataFrame:
     Read from bronze, the only place the quantity is still there.
     """
     return _by_file(
-        _kept(bronze),
+        bronze,
         (F.col("SUPPL_UNIT") == NO_SUPPLEMENTARY_UNIT)
         & ~_exact("QUANTITY_SUPPL_UNIT").eqNullSafe(0),
     )
@@ -448,7 +436,7 @@ def all_checks(
 ) -> list[tuple[str, str, DataFrame]]:
     """Every check, with the table it reads: bronze, detail or totals.
 
-    bronze holds the rows of the files checked, XI and XU included.
+    bronze holds the rows of the files checked.
     """
     return [
         ("01_country_valid", "detail", country_valid(detail, partners_iso)),
@@ -474,8 +462,6 @@ def all_checks(
         ),
         ("08a_no_total_in_detail", "detail", no_total_in_detail(detail)),
         ("08b_total_row_shape", "bronze", total_row_shape(bronze)),
-        ("08c_no_xi_xu", "detail", no_xi_xu(detail)),
-        ("08c_no_xi_xu", "totals", no_xi_xu(totals)),
         (
             "09_no_duplicate_on_grain",
             "detail",

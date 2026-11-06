@@ -1,6 +1,4 @@
 partner_code,partner_name,category,counts_in_totals,reason
-XI,United Kingdom (Northern Ireland),uk_split,false,"Only in the full_partxixu files, where GB is exactly XI + XU. Counted next to GB, it doubles trade with the United Kingdom."
-XU,United Kingdom (excluding Northern Ireland),uk_split,false,"Only in the full_partxixu files, where GB is exactly XI + XU. Counted next to GB, it doubles trade with the United Kingdom."
 QP,High Seas,high_seas,true,"Real trade without a partner country: counts in totals, not in country rankings."
 QQ,Stores and Provisions,stores_and_provisions,true,"Real trade without a partner country: counts in totals, not in country rankings."
 QR,Stores and Provisions within the framework of Intra-EU trade,stores_and_provisions,true,"Real trade without a partner country: counts in totals, not in country rankings."

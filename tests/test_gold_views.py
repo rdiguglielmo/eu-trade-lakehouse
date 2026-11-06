@@ -1,8 +1,9 @@
 """The views of the business questions on a local Spark, over real rows.
 
-Every row below is a line of a landed file of the 2026-09-15 publication, and
-every code list line a line of the landed code list, with its own line
-endings, unless a test changes a field to make its point. The rows reach the
+Every row below is a line of a landed file of the 2026-09-15 publication, but
+the two of June and July, of 2026-10-16, and every code list line a line of
+the landed code list, with its own line endings, unless a test changes a field
+to make its point. The rows reach the
 views as in the notebooks: written to a landed file, read with the bronze
 reader, split by split_bronze() and built into the facts of gold against
 dimensions built from those lines. The facts and the dimensions are registered
@@ -88,10 +89,9 @@ FR_02_EXPORT = (
 # Malta's imports of electricity from Italy: a value and MWh, without a weight.
 MT_IT_2716 = "MT,IT,I,27160000,35100,3511,3511,322,214200,05,1,1,1000_KWH,202605,9566617,9566617,0,82179"
 # Austria's imports from the United Kingdom in the next two months, lines of
-# full_partxixu_v2_202606.csv and full_partxixu_v2_202607.csv, the subset of each
-# month with the United Kingdom's partners, republished since.
-AT_GB_JUNE = "AT,GB,E,TOTAL,TOTAL,TOTAL,TOTAL,TOTAL,TOTAL,TO,1,1,NO_SU,202606,139759057,139759057,8366220,0"
-AT_GB_JULY = "AT,GB,E,TOTAL,TOTAL,TOTAL,TOTAL,TOTAL,TOTAL,TO,1,1,NO_SU,202607,114932672,114932672,6710409,0"
+# full_v2_202606.csv and full_v2_202607.csv as published on 2026-10-16.
+AT_GB_JUNE = "AT,GB,E,TOTAL,TOTAL,TOTAL,TOTAL,TOTAL,TOTAL,TO,1,1,NO_SU,202606,140214668,140214668,8510580,0"
+AT_GB_JULY = "AT,GB,E,TOTAL,TOTAL,TOTAL,TOTAL,TOTAL,TOTAL,TO,1,1,NO_SU,202607,123421691,123421691,7630930,0"
 
 SI_TOTALS = (SI_CH_NORMAL, SI_CH_INWARD, SI_CH_OUTWARD, SI_DE, SI_QY, SI_QZ)
 CLEAN = {

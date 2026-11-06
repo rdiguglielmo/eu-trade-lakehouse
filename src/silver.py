@@ -1,9 +1,8 @@
 """How the silver layer turns the bronze rows into two typed tables.
 
 trade_detail holds the rows by product, and trade_totals the TOTAL rows, which
-sum the others and have a grain of their own. Neither holds XI or XU: GB is
-exactly their sum. The rules, and the measurements behind each one, are in
-docs/engineering-notes.md, section Silver.
+sum the others and have a grain of their own. The rules, and the measurements
+behind each one, are in docs/engineering-notes.md, section Silver.
 
 Two things to keep in mind when changing this module:
 
@@ -19,12 +18,6 @@ from __future__ import annotations
 
 from pyspark.sql import Column, DataFrame
 from pyspark.sql import functions as F
-
-# The partners that split GB, Northern Ireland and the rest of the United
-# Kingdom. Eurostat publishes them in a subset of each month with the United
-# Kingdom's partners, not in the full month; kept out all the same, since GB is
-# exactly their sum.
-UK_SPLIT_PARTNERS = ("XI", "XU")
 
 # PRODUCT_NC of the rows that sum the others.
 TOTAL_PRODUCT = "TOTAL"
@@ -103,8 +96,8 @@ def typed(bronze: DataFrame) -> DataFrame:
 
 
 def split_bronze(bronze: DataFrame) -> tuple[DataFrame, DataFrame]:
-    """Return the detail and the totals of the bronze rows, without XI or XU."""
-    rows = typed(bronze.filter(~F.col("PARTNER").isin(*UK_SPLIT_PARTNERS)))
+    """Return the detail and the totals of the bronze rows."""
+    rows = typed(bronze)
     is_total = F.col("product_nc") == TOTAL_PRODUCT
     detail = rows.filter(~is_total)
     totals = rows.filter(is_total).select(*TOTALS_COLUMNS)
