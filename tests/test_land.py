@@ -766,7 +766,7 @@ def test_an_empty_window_stops_the_run_before_any_download(
     assert files_below(volume) == {}
 
 
-def test_only_the_code_lists_missing_from_the_volume_are_downloaded(
+def test_every_code_list_is_downloaded_over_the_one_in_the_volume(
     volume: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     downloaded: list[str] = []
@@ -781,11 +781,12 @@ def test_only_the_code_lists_missing_from_the_volume_are_downloaded(
         "CODE_LISTS",
         ("CLASSIFICATIONS/ENGLISH/CN.txt", "CLASSIFICATIONS/ENGLISH/FLOW.txt"),
     )
+    # A list landed by an earlier run, which Eurostat may have republished since.
     (volume / "code_lists").mkdir()
     (volume / "code_lists" / "CN.txt").write_bytes(b"landed")
     land.land_code_lists(volume)
-    assert downloaded == ["FLOW.txt"]
+    assert downloaded == ["CN.txt", "FLOW.txt"]
     assert files_below(volume) == {
-        "code_lists/CN.txt": b"landed",
+        "code_lists/CN.txt": b"list",
         "code_lists/FLOW.txt": b"list",
     }

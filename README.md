@@ -122,7 +122,7 @@ Three properties of this shape are deliberate.
 | Extraction | Python, `requests` and `py7zr`, in the first task of the Job | The archives are 7z, which `zipfile` cannot open. The Job installs `py7zr` in an environment of that task alone |
 | Landing | Unity Catalog Volume, written through the driver's disk | Each month is downloaded and extracted on the driver and copied in one sequential write, next to a manifest of what the Volume holds |
 | Processing | PySpark on Databricks serverless, environment version 6 | The notebooks run through Spark Connect, and the tests run the same logic on a local Spark |
-| Storage | Delta tables managed by Unity Catalog | `replaceWhere` rewrites one month in place, the history keeps the version before, and MERGE loads the dimensions with history |
+| Storage | Delta tables managed by Unity Catalog | `replaceWhere` rewrites one month in place, time travel reads the version before for about 7 days, and MERGE loads the dimensions with history |
 | Data quality | Checks in PySpark, results in `ops.dq_check_results` | Each check declares its expected failures, and a result off its expectation stops the run |
 | Orchestration | Databricks Jobs | Seven tasks in a chain, read from the GitHub repository, one run at a time, with a monthly schedule, paused |
 | Analysis | Spark SQL views and queries in `sql/` | One view per business question, one query per answer |
@@ -140,7 +140,7 @@ and enters the window on its own.
 
 | # | Step | Writes | Stops the run when |
 |---|---|---|---|
-| 1 | [`00_land`](notebooks/00_land.py): reads the listing, compares each month of the window with the Volume's manifest, lands the new and republished ones with a copy of the published totals, and downloads the code lists the Volume lacks | The Volume `eu_trade.landing.comext` | The window holds no month, or an archive has another size than the listing shows, or holds anything other than one `.dat` file |
+| 1 | [`00_land`](notebooks/00_land.py): reads the listing, compares each month of the window with the Volume's manifest, lands the new and republished ones with a copy of the published totals, and downloads every code list again | The Volume `eu_trade.landing.comext` | The window holds no month, or an archive has another size than the listing shows, or holds anything other than one `.dat` file |
 | 2 | [`01_bronze_ingest`](notebooks/01_bronze_ingest.py): the pending months, every column as text, with `_ingested_at`, `_source_file` and `_batch_id` | `bronze.comext_trade` | A file's rows differ from its lines, a row carries another month, a field is null, or a file was loaded in more than one batch |
 | 3 | [`02_silver_transform`](notebooks/02_silver_transform.py): typed and renamed in one `select`, the `TOTAL` rows apart, the HS levels derived | `silver.trade_detail`, `silver.trade_totals` | A file's bronze rows are not its detail and its totals |
 | 4 | [`03_silver_quality_checks`](notebooks/03_silver_quality_checks.py): 13 checks | `ops.dq_check_results` | A result is off its expectation |
@@ -311,7 +311,8 @@ carry it:
 Bronze, silver and both facts replace the pending months whole, with `replaceWhere` on the month,
 so a month written twice is written in place, never added. **A republished month is replaced
 without asking**: the landing writes its CSV and its copy of the published figures over the old
-ones, and the version before stays in the history of the Delta tables
+ones, and the Delta tables hold only the new publication. The one before can be read by time travel
+for about 7 days, until the `VACUUM` of predictive optimization removes its files
 ([The Volume's manifest](docs/engineering-notes.md#the-volumes-manifest)). Its checks need nothing
 declared, since every month expects the same rule.
 

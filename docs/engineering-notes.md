@@ -130,9 +130,12 @@ window from it (The window of a run), and gives each one a status:
 one in the Volume, and so is its copy of the published figures (Silver, The
 checks), fetched with it. If the table holds no figure for the month yet, the
 old copy is deleted, since it would reconcile the new file against the figures
-of another publication. What was there before stays in the history of the
-Delta tables built from it. The expected failures of the checks do not change
-with it: every month expects a rule, not a count measured on one publication.
+of another publication. The Delta tables built from it then hold only the new
+publication; the one before can be read by time travel for about 7 days, until
+the `VACUUM` that predictive optimization runs on managed tables removes its
+files, with the default retention. The expected failures of the checks do not
+change with it: every month expects a rule, not a count measured on one
+publication.
 
 **A republication can keep the size of a file.** The copy of the published
 figures of 202605 is 371 bytes in the publications of 2026-09-15 and
@@ -144,7 +147,7 @@ whatever their size.
 A month enters the manifest after its files, so the manifest never records a
 publication whose files are not there: a run that stops in between leaves the
 month as it was, and the next run lands it again. The code lists are
-downloaded when the Volume does not hold them (Code lists).
+downloaded in every run (Code lists).
 
 The landing creates the schema `landing` and the Volume `comext` if they are
 missing, and leaves them as they are otherwise. It never creates the catalog,
@@ -175,8 +178,9 @@ partitioned by `PERIOD`. It reads the files through `read_landed_csv()` in
 | One publication per month | Only the pending months are loaded (The incremental run), and each is replaced whole, with `replaceWhere` on its `PERIOD`, as silver and gold are. With none pending, the notebook ends without writing. All the files of a run go in one write, so a failure leaves the table as it was |
 
 A month republished since it was processed is pending again: bronze drops the
-rows of the publication before and holds the new one. The old rows stay in the
-table's history.
+rows of the publication before and holds the new one. The old rows can be read
+by time travel until the `VACUUM` of predictive optimization removes their
+files, about 7 days later.
 
 Before it ends, the notebook checks the table against the files it loaded and
 fails if any of these does not hold:
@@ -400,8 +404,12 @@ classifications describe the row, not the product.
 
 The landing fetches the lists in `config.CODE_LISTS` into `code_lists/` in the
 Volume, through the same access policy and the same atomic write as the
-archives, and skips a list the Volume already holds: a code list republished
-under the same name is not fetched again.
+archives, in every run and over the list the Volume holds: a code list
+republished under the same name enters with the next run. The nine weigh
+about 6.5 MB. Each holds every version of its codes since it began, `CN.txt`
+from 1988, and the MERGE of the versioned dimensions keeps a version missing
+from its source (Loading the versioned dimensions), so nothing a list held
+before is lost.
 
 | | |
 |---|---|
@@ -1439,7 +1447,7 @@ CI runs them on Ubuntu.
 | File | What it covers |
 |---|---|
 | `tests/test_config.py` | The window read from its two parameters: a malformed month refused with its parameter's name, an open window reaching the last month, a closed one stopping at its end and reading no yearly archive, a window past the last month empty, and one that ends before it starts refused. A table named in the catalog, and a month naming its archive and its CSV. Starts no JVM |
-| `tests/test_land.py` | The access policy: which answers are retried, the waits between attempts, `Retry-After`, the request for no content encoding. The atomic download, a transfer dropped mid-body started again and given up after five, the archive layout, a member above the size ceiling, the published names and URLs, and the skip of a file already there. The copy of the published figures: the parsing of the answer, in its own order of partners, and no copy for a month not published. The listing, over real rows: size and time read, a page without files refused. The manifest read back as written, and the status of each month. Over a Volume that is a folder of the test: a new month landed and recorded, a current one not downloaded again, a republished one replaced, and one without figures yet losing its old copy; a download of another size than listed not landed; the window landing only its months, an open window leaving the newest month out and one that names it landing it, an empty window stopping the run before any download; only the code lists the Volume lacks downloaded |
+| `tests/test_land.py` | The access policy: which answers are retried, the waits between attempts, `Retry-After`, the request for no content encoding. The atomic download, a transfer dropped mid-body started again and given up after five, the archive layout, a member above the size ceiling, the published names and URLs, and the skip of a file already there. The copy of the published figures: the parsing of the answer, in its own order of partners, and no copy for a month not published. The listing, over real rows: size and time read, a page without files refused. The manifest read back as written, and the status of each month. Over a Volume that is a folder of the test: a new month landed and recorded, a current one not downloaded again, a republished one replaced, and one without figures yet losing its old copy; a download of another size than listed not landed; the window landing only its months, an open window leaving the newest month out and one that names it landing it, an empty window stopping the run before any download; every code list downloaded over the one the Volume holds |
 | `tests/test_watermark.py` | The pending months: none where the watermark holds the landed publication, a month landed again and a month new to it, and a month the manifest does not name stopping the run. The CSV of each month in the Volume. The rows of the watermark once months are recorded: theirs replaced, the others kept. Starts no JVM |
 | `tests/test_job.py` | The definition of the Job: every key a setting the SDK knows, which it would otherwise drop; a task per notebook, in their order, each depending on the one before; one run at a time, and no task declaring a cluster; only the landing installing `py7zr`, at the version of the lock; the monthly schedule paused; the two parameters the window; and each notebook from 00 to 05 creating its widgets before it reads them. Starts no JVM |
 | `tests/test_deploy_job.py` | The Job created where the workspace has none of its name, its settings replaced where it has one, and two of its name stopping the run, against a fake of the Jobs API |

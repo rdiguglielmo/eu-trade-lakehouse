@@ -33,11 +33,17 @@ window is new, current or to be replaced:
 A new month and a replaced one land the same way: the CSV is written over any
 CSV of that name, and the copy of the figures too, or deleted if the table
 holds none yet, since an old copy would reconcile the new file against the
-figures of another publication. What was there before stays in the history of
-the Delta tables built from it. A month enters the manifest after its files,
-so the manifest never records a publication whose files are not there yet.
+figures of another publication. The Delta tables built from it then hold only
+the new publication; the one before can be read by time travel for about 7
+days, until the VACUUM that predictive optimization runs on managed tables
+removes its files. A month enters the manifest after its files, so the
+manifest never records a publication whose files are not there yet.
 
-The code lists are downloaded if the Volume does not hold them.
+The code lists are downloaded in every run, over those in the Volume, so a
+list Eurostat republishes under the same name enters with the next run. Each
+list holds every version of its codes since it began, and the MERGE of the
+versioned dimensions keeps a version missing from its source, so nothing a
+list held before is lost.
 """
 
 from __future__ import annotations
@@ -553,14 +559,11 @@ def write_volume_manifest(manifest: dict[str, Publication], volume: Path) -> Non
 
 
 def land_code_lists(volume: Path) -> None:
-    """Download each code list the Volume does not hold yet."""
+    """Download every code list and write it over the one in the Volume."""
     target_dir = volume / CODE_LISTS_SUBDIR
     with tempfile.TemporaryDirectory() as scratch:
         for relative_path in CODE_LISTS:
             name = PurePosixPath(relative_path).name
-            if (target_dir / name).exists():
-                LOGGER.info("%s already in the Volume, skipping", name)
-                continue
             downloaded = download_code_list(relative_path, Path(scratch))
             target_dir.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(downloaded, target_dir / name)

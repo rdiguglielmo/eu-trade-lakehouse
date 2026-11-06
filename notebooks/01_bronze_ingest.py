@@ -122,8 +122,9 @@ spark.sql(f"CREATE SCHEMA IF NOT EXISTS {qualified(BRONZE_SCHEMA)}")
 # Every column as text, the header of each file checked against EXPECTED_HEADER
 # without regard to case, and a malformed row fatal: see src/bronze.py. Each
 # pending month is replaced whole, partition by partition, so bronze holds one
-# publication of it; the one before stays in the table's history. All files go
-# in one write, so a failure leaves the table as it was.
+# publication of it; the one before can be read by time travel until the VACUUM
+# of predictive optimization removes its files, about 7 days later. All files
+# go in one write, so a failure leaves the table as it was.
 replaced_months = ", ".join(f"'{period}'" for period in pending)
 df_bronze = (
     read_landed_csv(spark, list(source_files.values()))

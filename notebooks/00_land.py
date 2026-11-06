@@ -14,7 +14,7 @@
 # MAGIC   3. Land each new or republished month: its CSV, and the copy of the figures Eurostat
 # MAGIC      publishes for it, which the silver checks reconcile against. Record it in the
 # MAGIC      manifest.
-# MAGIC   4. Download the code lists the Volume does not hold yet.
+# MAGIC   4. Download every code list, over the one the Volume holds.
 # MAGIC
 # MAGIC Needs `py7zr`, which the Job installs in the environment of this task.
 # MAGIC
