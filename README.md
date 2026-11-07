@@ -56,9 +56,9 @@ failing:
 Where the partner of a flow is not where the goods come from, and why ships follow their owner, is
 in [Results](#results) and [Limitations](#limitations). Why the newest month comes incomplete,
 from Eurostat's manual, is in
-[the notes](docs/engineering-notes.md#the-newest-month-lacks-most-of-its-intra-eu-trade).
+[the notes](docs/engineering-notes.md#the-source).
 Every property of the source, with its counts, is in
-[`docs/engineering-notes.md`](docs/engineering-notes.md), from Source access to Values.
+[`docs/engineering-notes.md`](docs/engineering-notes.md), from The source to Silver.
 
 ## Architecture
 
@@ -106,7 +106,7 @@ Three properties of this shape are deliberate.
   the Job, which reaches the internet on Free Edition, and extracts each archive on the driver's
   disk before copying its CSV into the Volume, which does not take the random writes of an
   extraction
-  ([The landing goes through the driver's disk](docs/engineering-notes.md#the-landing-goes-through-the-drivers-disk)).
+  ([Landing and the manifest](docs/engineering-notes.md#landing-and-the-manifest)).
   A run processes what it landed itself, with no step outside the workspace.
 - **Bookkeeping has a schema of its own.** `ops` holds the results of the checks and the
   watermark, so rebuilding bronze, silver or gold does not take the record of what was checked and
@@ -313,7 +313,7 @@ so a month written twice is written in place, never added. **A republished month
 without asking**: the landing writes its CSV and its copy of the published figures over the old
 ones, and the Delta tables hold only the new publication. The one before can be read by time travel
 for about 7 days, until the `VACUUM` of predictive optimization removes its files
-([The Volume's manifest](docs/engineering-notes.md#the-volumes-manifest)). Its checks need nothing
+([Landing and the manifest](docs/engineering-notes.md#landing-and-the-manifest)). Its checks need nothing
 declared, since every month expects the same rule.
 
 Three runs over the full months on serverless:

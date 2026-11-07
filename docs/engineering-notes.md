@@ -3,196 +3,218 @@
 The rules in this repository that are easy to break and expensive to break.
 [`README.md`](../README.md) says what the project is.
 
-## A monthly file is not immutable: Eurostat republishes months already out
+## The source
 
-The file name carries the reference month, not the publication. Eurostat
-regenerates published months in place, under the same name, and the bulk
-download listing shows when: the full file of 202605, published at 2026-09-15
-09:38:30, was republished at 2026-10-16 10:00:08, when 202608 came out. A count
-of the full month of 202605 alone is measured on its publication of
-2026-09-15, unless it says otherwise; the other months come from the
-publication of 2026-10-16, and a table over several months says which
-publication each one holds.
-
-**A republication changes the row count, not only values.** The full month of
-202605 went from 4,988,013 rows on 2026-09-15 to 4,994,361 on 2026-10-16, and
-the published table moved with it: EU27 exports to the EU27 from 360,627.9 to
-360,873.5 M EUR.
-
-Two consequences:
-
-- A landing that skips a file the Volume already holds is correct within one
-  publication and wrong across two: it keeps the old copy of a month that has
-  since been revised. The landing compares the Volume's manifest with the
-  listing first (The Volume's manifest).
-- A watermark on `PERIOD` alone would never pick up a revised month. The
-  publication time in the listing is the field that changes, and it is set per
-  file: in the publication of 2026-10-16 the full months of 2026 are stamped
-  from 10:00:07 to 10:00:09.
-
-A row count measured against a source file is only an expectation for the same
-publication. It is recorded with the file's publication timestamp.
-
-## Source access
-
-COMEXT detailed trade data is served by the **bulk download facility**. The
-SDMX dissemination API does not expose this dataset: its dataflow endpoint
-answers 404.
-
-The canonical file URL has a slash before the query string:
-
-```
-https://ec.europa.eu/eurostat/api/dissemination/files/?file=comext%2FCOMEXT_DATA%2FPRODUCTS%2F<file>
-```
-
-Without the slash the server answers 302 and redirects to it.
-
-The listing of the same folder, `?dir=comext%2FCOMEXT_DATA%2FPRODUCTS`, is an
-HTML page with one row per file: the name in a link, the size in bytes in the
-`title` of the next cell, the type, and the publication time as
-`DD/MM/YYYY HH:MM:SS`. `parse_listing()` reads those cells, and stops on a page
-where it finds none: read as empty, a changed format would make every month
-look unpublished.
-
-The facility needs no credentials and publishes no request rate. The landing
-holds itself to one request per second, which is a conservative choice rather
-than a measured limit. Failures follow one policy, implemented once in
-`src/land.py`:
-
-| Response | Treatment |
-|---|---|
-| 429, 500, 502, 503, 504, dropped connection, timeout | Retried, five attempts, backoff of 1, 2, 4 and 8 seconds; `Retry-After` honoured up to 30 seconds. A `Retry-After` that is an HTTP date, negative, NaN or infinite falls back to the backoff: `time.sleep()` raises on a negative or NaN delay. A connection that drops or times out while the body streams in, after the headers, starts the transfer again from its first byte, with the same attempts and backoff |
-| 403, 404, anything else | Raised immediately. A 404 means the file name is wrong or the month is not published yet |
-
-## Archive format
+<details open>
+<summary><b>One 7z archive per month, holding one CSV of 18 columns, which
+Eurostat republishes in place: a file is told by its publication time, not by
+its month.</b> July 2026 is 46,802,030 bytes and 5,050,155 rows, as published
+on 2026-10-16.</summary>
 
 | | |
 |---|---|
-| Full month | `full_v2_YYYYMM.7z`, 45 to 48 MB for the months of 2026 |
-| Compression | 7z. `zipfile` cannot open it; `py7zr` can. In `py7zr` 1.x, `read()` and `readall()` no longer exist: the landing uses `getnames()` and `extractall()` |
-| Contents | Exactly one member, named without the `_v2_` of the archive: `full_202605.dat` |
-| Member format | Comma separated, one header row, despite the `.dat` extension |
-| Columns | 18, listed in `EXPECTED_HEADER` in `src/config.py` |
+| Access | Eurostat's bulk download facility, with no credentials and no published request rate: the landing holds itself to one request per second. The SDMX API does not serve this dataset, and its dataflow answers 404 |
+| File | `full_v2_YYYYMM.7z`, 45 to 48 MB for the months of 2026, at `https://ec.europa.eu/eurostat/api/dissemination/files/?file=comext%2FCOMEXT_DATA%2FPRODUCTS%2F<file>`. Without the slash before `?` the server redirects |
+| Listing | The same address with `?dir=comext%2FCOMEXT_DATA%2FPRODUCTS`: an HTML page with the name, size and publication time of each file. `parse_listing()` stops on a page where it finds none, since read as empty it would make every month look unpublished. The folder also holds yearly archives and per-month subsets, which the landing does not read |
+| Archive | 7z, which `py7zr` opens and `zipfile` does not, holding exactly one member, `full_YYYYMM.dat`: comma separated with one header row, despite the extension, and the 18 columns of `EXPECTED_HEADER` in `src/config.py`. An archive that holds anything else stops the landing |
+| Failures | 429, 500, 502, 503, 504, a dropped connection or a timeout: five attempts, backing off 1, 2, 4 and 8 seconds, with `Retry-After` honoured up to 30. Any other status is raised at once; a 404 means a wrong name or a month not published yet |
 
-The landing refuses an archive that holds anything other than one `.dat`
-member at its root. A different layout means the publication format changed,
-and loading whatever happens to be inside would hide it.
+**Eurostat republishes a month in place, under the same name, with other
+rows:** 202605 went from 4,988,013 rows on 2026-09-15 to 4,994,361 on
+2026-10-16. The landing compares each month's size and publication time in the
+listing with the Volume's manifest, and lands a republished month again
+(Landing and the manifest); the watermark makes it pending (The incremental
+run).
 
-The folder also holds a yearly archive per year, `full_v2_YYYY52.7z`, and next
-to each month a subset of it, `full_partxixu_v2_YYYYMM.7z`, with the partners
-of the United Kingdom only. The landing reads neither: it takes the months from
-the names of the monthly archives (The window of a run).
+**The newest month of the listing lacks most of its intra-EU trade**, which
+Eurostat publishes with the next monthly release (manual, pp. 56-57): 202608,
+as listed on 2026-10-20, held that of 9 of the 27 reporters. An open window
+therefore stops at the month before the last one listed (The window of a run).
 
-## The landing goes through the driver's disk
+<details>
+<summary>Every file carries its own totals as rows, <code>PRODUCT_NC =
+TOTAL</code>, so a sum over the file counts every euro twice.</summary>
 
-`full_v2_202605.7z` is extracted as `full_v2_202605.csv`, and the CSV lands in
-the Volume under that name, so bronze can record the exact Eurostat file each
-row came from. The archive itself is not kept.
+One row per reporter, partner, flow and statistical procedure sums the other
+rows of that combination: in July 2026, 12,783 `TOTAL` rows add up to
+1,224,894.873 M EUR, and the other rows to 1,224,894.940. They read `TOTAL` in
+every classification column but `PRODUCT_SECTION`, which reads `TO`, so a
+filter on the section lets them through: the filter is `PRODUCT_NC = 'TOTAL'`,
+and silver gives them a table of their own (Silver).
 
-**A Volume does not take the random writes of an extraction** (Databricks
-documentation), so each month goes through a temporary folder on the driver's
-disk: `land_month()` in `src/land.py` downloads the archive there, extracts it
-there, and only then copies the CSV into the Volume with `shutil.copyfile`, a
-sequential write. The Volume's manifest is written the same way, on the driver
-and copied over the Volume's, so nothing is renamed in the Volume.
+</details>
 
-On the driver both steps are atomic. The download writes to `.part` and is
-renamed only when the received size equals the `Content-Length` the server
-announced; the extraction goes to a temporary folder and is renamed into
-place. Every request asks for `Accept-Encoding: identity`: `Content-Length`
-counts the bytes on the wire, and with no content encoding they are the bytes
-written. An archive of another size than the listing shows stops the run
-before anything reaches the Volume: the listing is read before the downloads,
-and another size means it changed in between, so the publication time recorded
-would be wrong.
+<details>
+<summary>The <code>TOTAL</code> rows reproduce the figures Eurostat publishes,
+within their rounding of 0.05 M EUR, against the same publication
+only.</summary>
 
-The extraction reads the member's size from the archive's listing first, and
-refuses one that would unpack to more than 2 GiB (`MAX_EXTRACTED_BYTES`). The
-full months of 2026 unpack to 400 to 423 MB, which the driver of a serverless
-task holds next to the archive; the ceiling only keeps a corrupt archive from
-filling the disk.
+Eurostat's monthly table `ext_st_eu27_2020sitc` (`sitc06=TOTAL`,
+`indic_et=TRD_VAL`, `geo=EU27_2020`, million EUR) is compiled from the same
+data: `TRADE_TYPE` `I` is its partner `EU27_2020`, `E` is `EXT_EU27_2020`, and
+GB is `UK`. July 2026, both from the publication of 2026-10-16:
 
-## The Volume's manifest
+| 2026-07, M EUR | `TOTAL` rows | Published | Difference |
+|---|---:|---:|---:|
+| Intra-EU imports | 358,993.494 | 358,993.5 | -0.006 |
+| Intra-EU exports | 375,317.664 | 375,317.7 | -0.036 |
+| Extra-EU imports | 243,299.599 | 243,299.6 | -0.001 |
+| Extra-EU exports | 247,284.116 | 247,284.1 | +0.016 |
+| Partner UK, imports | 14,409.093 | 14,409.1 | -0.007 |
+| Partner UK, exports | 31,883.928 | 31,883.9 | +0.028 |
 
-`manifest.csv`, at the root of the Volume, records each landed archive with its
-size and the publication time the listing gave it: `archive`, `archive_bytes`
-and `published_at`, the time as `2026-10-16T10:00:09`. The landing reads the
-listing once per run, before downloading anything, takes the months of the
-window from it (The window of a run), and gives each one a status:
+**The table is revised together with the files**: against the table of
+2026-10-16, the file of 202605 published on 2026-09-15 misses every figure, by
+19.8 to 248.5 M EUR. So check 10 compares each file with a copy of the figures
+saved when its month lands (Landing and the manifest), never with the live
+table.
 
-| Status | When | What the landing does |
-|---|---|---|
-| `new` | The manifest does not name the archive | Lands it |
-| `current` | The manifest records the size and the time the listing shows, and the Volume holds its CSV | Nothing |
-| `replace` | The manifest records another size or time, or the CSV is missing | Lands it over what is there |
+</details>
 
-**A republished month is replaced without asking.** Its CSV is written over the
-one in the Volume, and so is its copy of the published figures (Silver, The
-checks), fetched with it. If the table holds no figure for the month yet, the
-old copy is deleted, since it would reconcile the new file against the figures
-of another publication. The Delta tables built from it then hold only the new
-publication; the one before can be read by time travel for about 7 days, until
-the `VACUUM` that predictive optimization runs on managed tables removes its
-files, with the default retention. The expected failures of the checks do not
-change with it: every month expects a rule, not a count measured on one
-publication.
+</details>
 
-**A republication can keep the size of a file.** The copy of the published
-figures of 202605 is 371 bytes in the publications of 2026-09-15 and
-2026-10-16, with other figures: EU27 exports to the EU27 of 360,627.9 and
-360,873.5 M EUR. Compared by size it is the same file, so the status reads the
-publication time next to the size, and a replaced month writes both files
-whatever their size.
+## Partners and products
 
-A month enters the manifest after its files, so the manifest never records a
-publication whose files are not there: a run that stops in between leaves the
-month as it was, and the next run lands it again. The code lists are
-downloaded in every run (Code lists).
+<details open>
+<summary><b>Four properties of the codes change a ranking or a sum without
+changing a row count.</b> In July 2026, 9,738.2 M EUR, 0.80% of the month,
+changes partner with the rows read, and codes ending in X hold 2.93% of the
+value of the rows by product.</summary>
+
+- **Ten partner codes are not countries.** The Q codes, for high seas, stores
+  and provisions, a partner not specified and a partner confidential, count in
+  totals but not in a ranking of countries; the seed
+  [`partner_special_codes.csv`](../reference/partner_special_codes.csv) names
+  them. No partner code is a zone: the 245 of July 2026, 7 of them Q codes,
+  are all valid in `PARTNERS_ISO.txt` on 2026-07-01.
+- **The partner depends on the flow** (manual, pp. 30 and 60): the country of
+  destination for exports, the member state the goods were shipped from for
+  intra-EU imports, and the country of origin for extra-EU imports. Goods
+  cleared in Rotterdam reach Germany as Dutch intra-EU exports (pp. 36-37), so
+  the Netherlands, 14.5% of Germany's imports, need not be where they were
+  made. Ships and aircraft follow their owner (pp. 87-90), and processing
+  trade counts at the full value of the goods (pp. 25-26).
+- **A partner confidential at product level moves to QY (intra-EU) or QZ
+  (extra-EU) in the rows by product, while its `TOTAL` row still names it**
+  (pp. 41-43): 3,422.5 and 6,315.7 M EUR in July 2026. Questions by partner
+  read the totals, and questions by product the rows by product (Gold, What
+  each business question reads).
+- **Product codes ending in X hold confidential or estimated trade, or trade
+  that simplification leaves without an eight-digit code** (pp. 28 and 40), at
+  the level of a chapter (`28XXXXXX`), a heading (`2833XXXX`) or a subheading
+  (`283321XX`): 47,801, 2,828 and 27,869 rows in July 2026, 1.56% of the rows
+  by product. They add to the eight-digit codes rather than repeat them, so
+  the HS hierarchy stops at the level they keep, and one of them can take a
+  row per code of the parallel classifications (Silver).
+
+</details>
+
+## Landing and the manifest
+
+<details open>
+<summary><b>The landing task compares each month of the window with the
+Volume's manifest and lands only the new and republished ones, through the
+driver's disk.</b> Its last run found the seven months of 2026 current, landed
+none, and downloaded the nine code lists again.</summary>
+
+`land()` in `src/land.py`, the first task of the Job, reads the listing once,
+before any download, and takes the months of the window from it (The window of
+a run). `manifest.csv`, at the root of the Volume, records each landed archive
+with its size and publication time, and `plan_months()` compares the two: a
+`new` month is landed, a `replace` one landed over what is there, a `current`
+one left alone, and a month whose CSV is missing is `replace`. With 202605 as
+it first landed, against today's listing:
+
+| Archive | In the manifest | In the listing | Status |
+|---|---|---|---|
+| `full_v2_202605.7z` | 46,127,843 bytes, `2026-09-15T09:38:30` | 46,148,464 bytes, `2026-10-16T10:00:08` | `replace` |
+| `full_v2_202606.7z` | 47,304,745 bytes, `2026-10-16T10:00:09` | The same | `current` |
+| `full_v2_202607.7z` | No row | 46,802,030 bytes, `2026-10-16T10:00:09` | `new` |
+
+A month enters the manifest only after its files, so a run that stops in
+between leaves it as it was, and the next run lands it again. In a run of the
+Job with `end_period` 202607 and every month current, the task landed nothing
+and downloaded the nine code lists, each the size the Volume held, in 236
+seconds; a run that lands a month is in The Job.
+
+**A republished month is replaced without asking.** Its CSV and its copy of
+the published figures, fetched with it, are written over the old ones; the old
+copy is deleted if the table holds no figure for the month yet, since it
+belongs to another publication. The Delta tables built from it then hold only
+the new publication, and the one before can be read by time travel for about
+7 days, until the `VACUUM` that predictive optimization runs on managed tables
+removes its files.
+
+**The status reads the time next to the size, because a republication can
+keep the size of a file**: the copy of the published figures of 202605 is 371
+bytes in both of its publications, with other figures.
+
+The nine code lists, about 6.5 MB, are written over the Volume's in every run.
+Each holds every version of its codes, and the MERGE of the versioned
+dimensions keeps a version its list no longer holds (Dimensions with history).
+Their layout is in the [data dictionary](data_dictionary.md#code-lists).
+
+<details>
+<summary>Each month goes through the driver's disk, since a Volume does not
+take the random writes of an extraction.</summary>
+
+`land_month()` downloads the archive to a temporary folder on the driver,
+extracts it there, and only then copies the CSV into the Volume with
+`shutil.copyfile`, a sequential write (Databricks documentation); the manifest
+is written the same way, so nothing is renamed in the Volume. The archive is
+not kept, and the CSV lands as `full_v2_YYYYMM.csv`, the name bronze records
+on every row.
+
+On the driver both steps are atomic. The download writes to `.part`, renamed
+only when its size equals the `Content-Length` announced, asked with
+`Accept-Encoding: identity` so that the bytes on the wire are the bytes
+written; the extraction goes to a temporary folder. An archive of another size
+than the listing shows stops the run before anything reaches the Volume, since
+the listing changed in between. One that would unpack to more than 2 GiB is
+refused; the months of 2026 unpack to 400 to 423 MB.
 
 The landing creates the schema `landing` and the Volume `comext` if they are
-missing, and leaves them as they are otherwise. It never creates the catalog,
-which on Free Edition is a Standard catalog with default storage, created in
-Catalog Explorer.
+missing, and never the catalog, which on Free Edition is a Standard catalog
+with default storage, created in Catalog Explorer.
 
-Two runs of the landing task of the Job (The Job):
+</details>
 
-| Run | Result |
-|---|---|
-| `end_period` 202607, with the CSV of 202607 deleted from the Volume | The window from 202601 to 202607: six months `current` and 202607 `replace`, for its missing CSV. 46,802,030 bytes downloaded, its 6 published figures saved, the CSV extracted, copied and recorded; the 9 code lists skipped. The task took 287 seconds, 41 of them in the landing |
-| The defaults | The window from 202601 to 202607, the month before the last one listed: the seven `current`, of 2026-10-16, and nothing landed; 202608 left out; the code lists skipped. 252 seconds |
+</details>
 
 ## Bronze
 
+<details open>
+<summary><b>Bronze is a faithful copy of the landed files, every column as
+text and one publication per month: 35,253,450 rows for the seven months of
+2026.</b> The rows of each file equal its lines, counted without the CSV
+parser.</summary>
+
 `notebooks/01_bronze_ingest.py` loads the CSV files of the Volume into
-`eu_trade.bronze.comext_trade`, a faithful copy: the 18 source columns as text,
-plus `_ingested_at`, `_source_file` and `_batch_id`. It is a managed Delta table
-partitioned by `PERIOD`. It reads the files through `read_landed_csv()` in
-`src/bronze.py`, which the tests run on a local Spark (Tests and lint).
+`eu_trade.bronze.comext_trade`, a managed Delta table partitioned by `PERIOD`:
+the 18 source columns as text, plus `_ingested_at`, `_source_file` and
+`_batch_id`. It reads them through `read_landed_csv()` in `src/bronze.py`,
+which the tests run on a local Spark (Tests and lint).
 
 | Rule | How |
 |---|---|
-| One file per month | The file list comes from the months of the window that the Volume's manifest names, through `landed_csv_paths()` in `src/watermark.py`. Never every CSV in the Volume |
-| Every column as text | An explicit schema of 18 strings. A typed reader drops leading zeros |
+| One file per month | The months of the window that the Volume's manifest names, through `landed_csv_paths()` in `src/watermark.py`. Never every CSV in the Volume |
+| Every column as text | An explicit schema of 18 strings. A typed reader drops leading zeros, which 277,951 values of `PRODUCT_NC` carry in July 2026 |
 | Header checked | `enforceSchema=false` compares each file's header with `EXPECTED_HEADER`, position by position, and fails if a name differs. Not in case: Spark compares column names without it, so a lowercase header loads, and every later step resolves its columns the same way |
 | A malformed row fails the load | `mode=FAILFAST`, instead of a row padded with nulls |
-| One publication per month | Only the pending months are loaded (The incremental run), and each is replaced whole, with `replaceWhere` on its `PERIOD`, as silver and gold are. With none pending, the notebook ends without writing. All the files of a run go in one write, so a failure leaves the table as it was |
+| One publication per month | Only the pending months are loaded (The incremental run), each replaced whole with `replaceWhere` on its `PERIOD`, as silver and gold are. With none pending, the notebook ends without writing. All the files of a run go in one write, so a failure leaves the table as it was |
 
-A month republished since it was processed is pending again: bronze drops the
-rows of the publication before and holds the new one. The old rows can be read
-by time travel until the `VACUUM` of predictive optimization removes their
-files, about 7 days later.
+**A month republished since it was processed is pending again, and bronze
+keeps only its new publication.** The month is replaced whole, so the rows of
+the publication before leave the table. They can be read by time travel until
+the `VACUUM` of predictive optimization removes their files, about 7 days
+later.
 
-Before it ends, the notebook checks the table against the files it loaded and
-fails if any of these does not hold:
-
-- the rows of each file equal the lines of the file read as plain text, minus
-  the header: a count that does not go through the CSV parser;
-- every row carries the `PERIOD` in its file name;
-- no field is null;
-- each file was loaded in one batch.
-
-The seven full months of the publication of 2026-10-16, each with a valid
-header and 0 nulls:
+Before it ends, the notebook checks the table against the files it loaded,
+and fails if a file's rows differ from its lines read as plain text minus the
+header, a row carries another `PERIOD` than its file, a field is null, or a
+file took more than one batch: with one month in the table twice, it stops
+naming that file. The seven full months of 2026-10-16, each with a valid
+header, 0 nulls and 0 rows of another period:
 
 | File | Archive bytes | Rows, equal to lines |
 |---|---:|---:|
@@ -205,358 +227,108 @@ header and 0 nulls:
 | `full_v2_202607.csv` | 46,802,030 | 5,050,155 |
 | Total | | 35,253,450 |
 
-The full month of 202605 as published on 2026-09-15, 46,127,843 bytes, held
-4,988,013 rows, with 285,530 values of `PRODUCT_NC` with a leading zero and
-12,709 `TOTAL` rows, 0 nulls and 0 rows with another period.
+**An empty field arrives as NULL**, since Spark's CSV reader takes the empty
+string as its null marker by default (`nullValue` is `""`): the null check is
+what would surface one, and no field of the seven full months is null.
 
-**The check can fail.** With the rows of one month in the table twice, under
-two `_batch_id`s, it stops with an `AssertionError` naming that one file, with
-twice its lines in rows and two batches, while the other files still match.
-
-### An empty field arrives as NULL
-
-Spark's CSV reader takes the empty string as its null marker by default
-(`nullValue` is `""`), so an empty field arrives in bronze as NULL, not as an
-empty string. No field of the seven full months is null in bronze, so none of
-them holds an empty field, and nothing is lost. The null check is what
-surfaces an empty field in any other month.
-
-## Every file carries its own totals as rows
-
-Next to the rows by product, each file holds one row per reporter, partner,
-flow and statistical procedure whose `PRODUCT_NC` is `TOTAL`: the sum of the
-other rows of that combination. **A sum over a file that keeps them counts
-every euro twice.** In the full month of 202605 the `TOTAL` rows add up to
-1,156,578.3 M EUR and the other rows to 1,156,578.4 M EUR.
-
-The other classification columns of those rows read `TOTAL`, except
-`PRODUCT_SECTION`, which reads `TO`: the marker cut to the two characters of
-that column. A filter on the section column lets every one of them through. The
-filter is `PRODUCT_NC = 'TOTAL'`.
-
-## The totals reconcile with the figures Eurostat publishes
-
-Eurostat's monthly EU27 table `ext_st_eu27_2020sitc` (`sitc06=TOTAL`,
-`indic_et=TRD_VAL`, `geo=EU27_2020`, million EUR) is compiled from the same
-data. `TRADE_TYPE` `I` corresponds to its partner `EU27_2020` and `E` to
-`EXT_EU27_2020`. The `TOTAL` rows reproduce it within its rounding of 0.05 M
-EUR:
-
-| 2026-05, M EUR | `TOTAL` rows | Published | Difference |
-|---|---:|---:|---:|
-| Intra-EU imports | 347,271.1 | 347,271.1 | +0.003 |
-| Intra-EU exports | 360,627.9 | 360,627.9 | +0.018 |
-| Extra-EU imports | 232,051.0 | 232,051.0 | -0.030 |
-| Extra-EU exports | 216,628.3 | 216,628.3 | +0.023 |
-| Partner UK, imports | 14,691.4 | 14,691.4 | -0.047 |
-| Partner UK, exports | 29,993.4 | 29,993.4 | -0.003 |
-
-The comparison only holds between the same publication: the table and the bulk
-files were both updated on 2026-09-15. A total that merely comes down after a
-filter proves nothing; a total that matches the publisher's own figure does.
-
-**The table is revised together with the files.** Both were revised again on
-2026-10-16, the table with `updated` = `2026-10-16T11:00:00+0200`. Against the
-revised table, the files of 2026-09-15 miss every figure by more than the
-tolerance, by 19.8 to 248.5 M EUR in 202605. A reconciliation against the live
-table fails whenever the landed files belong to another publication, so check
-10 compares against a copy of the published figures saved with the files (see
-Silver).
-
-For a month it does not hold yet, the table answers 200 with an empty `value`,
-not a 4xx, so an absent month has to be read from the answer, not from its
-status. It lists the partners as `EU27_2020`, `UK`, `EXT_EU27_2020`: neither the
-order of the request nor the alphabetical one.
-
-## The newest month lacks most of its intra-EU trade
-
-**The newest month of the listing is not complete.** `full_v2_202608.7z`, as
-listed at 2026-10-20 16:03:31, is 25,760,599 bytes, where the archives of
-August 2024 and August 2025 are 44.7 and 44.3 MB. It
-holds the extra-EU trade of the 27 reporters and their trade with the United
-Kingdom, equal to the published figures to the euro, but the intra-EU trade of
-only 9 of them: Czechia, Estonia, Spain, Greece, Hungary, Ireland, Lithuania,
-Latvia and Portugal. Its intra-EU exports add up to 59,438 M EUR, where the
-published table, already complete, holds 322,390. Counted as check 10 counts,
-two of its six figures are off, the intra-EU ones, and the check would stop
-the run.
-
-The manual says why (pp. 56-57). The detail of a month's extra-EU trade is
-published about 46 days after the month ends, and that of its intra-EU trade
-usually with the next monthly release, except for the countries that send both
-at once. The subset of 202607 with the partners of the United Kingdom shows the
-same: it grew 17% from its first publication to its second, against 0.02% and
-0.6% for 202605 and 202606. The full month of 202607 landed here is its second
-publication, with the intra-EU trade of the 27.
-
-**An open window therefore stops at the month before the last one listed.**
-With `end_period` empty, the landing leaves the newest month of the listing
-out, and lands it with the next release, once complete: with the Job's
-schedule on the 20th, a month enters about the 20th of the third month after
-it. A window that names the newest month in `end_period` lands it all the
-same, and check 10 stops the run on it until the next release replaces it. The
-notebooks take their window from the Volume's manifest, which an open window
-never brings the incomplete month into (The window of a run).
-
-## Partner codes that are not countries
-
-No partner code is an aggregate. The 246 partner codes of the full month of
-202605 are all valid in `PARTNERS_ISO.txt` on 2026-05-01, and none is a
-geographic zone. Ten codes are not single countries;
-[`reference/partner_special_codes.csv`](../reference/partner_special_codes.csv)
-lists them: the Q codes (high seas, stores and provisions, partner not
-specified, partner confidential) count in totals but are not countries in a
-ranking.
-
-## The partner is not always where the goods come from
-
-The partner country depends on the flow (manual, pp. 30 and 60):
-
-| Flow | Partner |
-|---|---|
-| Exports | The country of destination |
-| Intra-EU imports | The member state of consignment, the one the goods were shipped from |
-| Extra-EU imports | The country of origin, where the goods were wholly obtained or last substantially processed |
-
-**Goods from outside the EU cleared in another member state reach the
-importer as intra-EU trade from that member state.** Released for free
-circulation in Rotterdam, they are Dutch extra-EU imports from their country of
-origin, then Dutch intra-EU exports to where they go next: quasi-imports, or
-the Rotterdam effect (pp. 36-37). The manual names the ports of the Netherlands
-and Belgium and the airports of Luxembourg and Hungary. The Netherlands is
-Germany's first partner in question 1, 14.7% of its imports in the full month
-of 202605, and the data cannot tell how much of it was produced there.
-
-**Ships and aircraft follow their owner, not their route** (pp. 35 and
-87-90). A vessel or aircraft is traded in the month its economic ownership
-changes, exported to the country where the new owner is established, under
-statistical procedure 9. Fuel and stores delivered to a ship or aircraft are
-exports to the country where its economic owner is established, or to QR
-(intra-EU) or QS (extra-EU) when that country is not determined. A partner far
-from a reporter's routes can be where shipowners are established.
-
-**Processing trade is in the figures, at the full value of the goods** (pp.
-25-26, 32 and 34-35). Goods that cross a border to be processed, and the goods
-that come back, are recorded even when their ownership does not change. In
-extra-EU trade, statistical procedure 2 marks imports for inward processing and
-exports after it, and 3 outward processing. The value is that of the whole
-goods, before and after processing, not the value the processing added.
-
-## Partner confidentiality moves trade between partners
-
-When a partner is confidential at product level, the rows by product record
-the trade under QY (intra-EU) or QZ (extra-EU), while the `TOTAL` row of the
-same reporter still names the real partner. In the full month of 202605 the
-rows by product hold 4,250.2 M EUR more than the `TOTAL` rows under QY, and
-4,822.9 M EUR more under QZ: **9,071.8 M EUR, 0.78% of the month, change
-partner depending on which rows are read.** 92 of the other 241 partners
-differ by at least 1 M EUR between the two; the largest gap is Norway's,
-1,667.8 M EUR, 10.1% of its total. Trade with the United Kingdom is 290.3 M
-EUR (0.65%) short in the rows by product, 90% of it from four reporters.
-
-What each kind of question has to read:
-
-| Question | Rows |
-|---|---|
-| By partner: rankings, concentration | `TOTAL` rows, which name the real partner |
-| By product | The rows by product. Over the whole month they add up to the `TOTAL` rows, 0.064 M EUR apart |
-| By partner and product, such as value per kilogram | The rows by product, knowing that the trade under QY and QZ cannot be given back its partner |
-
-In 19 of the 54 reporter and flow pairs of trade with GB in the same month,
-the `TOTAL` row is below the rows by product, by amounts such as 189 EUR, 33
-EUR and 0.025 EUR. No documented cause explains it.
-
-Source: Eurostat, *User manual on international trade in goods statistics,
-2026 edition*, pp. 41-43.
-
-## Product codes that are not eight digits
-
-Codes ending in X hold confidential or estimated trade, or trade that
-simplification measures leave without an eight-digit code, at three levels:
-`28XXXXXX` (chapter), `2833XXXX` (HS4) and `283321XX` (HS6). They add to the
-eight-digit codes rather than repeat them. Eurostat uses them from January
-2025; earlier data use the letters A, B, C, E, F, I, M, P, R, S, V, W and Y
-instead (manual, pp. 28 and 40).
-
-Rows by product of the full month of 202605, by shape of `PRODUCT_NC`,
-2026-09-15 publication. No other shape occurs:
-
-| File | Eight digits | Chapter X | HS4 X | HS6 X |
-|---|---:|---:|---:|---:|
-| `full_v2_202605.csv` | 4,876,391 | 49,031 | 2,784 | 47,098 |
-
-A check for eight digits rejects them, and the HS hierarchy can only be derived
-from them down to the level they keep. They also decide how a tool guesses the
-column's type: a sample that contains one is read as text, and a sample that
-does not is read as a number, dropping the leading zeros. Types are always set
-explicitly.
-
-**An X code can take several rows for the same reporter, partner, flow and
-procedure, one per code of the parallel classifications**, SITC above all.
-Sweden's exports of `29XXXXXX` to QY in 202605 are 18 rows, one per SITC code
-from `51211` to `51XXX`, adding up to 13.73 M EUR. In the full month of 202605
-that happens in 1,178 groups and 2,932 rows, every one of them an X code: an
-eight-digit code never repeats. With the five parallel classifications added,
-every row is unique, and no two rows are identical. For an X code the parallel
-classifications describe the row, not the product.
-
-## Code lists
-
-The landing fetches the lists in `config.CODE_LISTS` into `code_lists/` in the
-Volume, through the same access policy and the same atomic write as the
-archives, in every run and over the list the Volume holds: a code list
-republished under the same name enters with the next run. The nine weigh
-about 6.5 MB. Each holds every version of its codes since it began, `CN.txt`
-from 1988, and the MERGE of the versioned dimensions keeps a version missing
-from its source (Dimensions with history), so nothing a list held
-before is lost.
-
-| | |
-|---|---|
-| Encoding | UTF-8 |
-| Layout | Tab separated, no header row |
-| `PARTNERS_ISO.txt`, `GEOZONES.txt` | Four columns: code, valid from, valid to (`dd/mm/yyyy`), name. `31/12/2500` means still valid |
-| `TRADE_TYPE.txt` | Two columns: code, description |
-| `PARTNERS.txt` | Not used. Numeric codes (`0004` is Germany) and names padded with trailing spaces; the monthly files carry the letters of `PARTNERS_ISO.txt` |
-| `CN.txt` | Four columns, like `PARTNERS_ISO.txt`, with codes of every level from 2 to 8 digits: 42,587 rows, 19,092 eight-digit codes, 1,559 of them with more than one row. It also lists the X codes, with descriptions and dates of their own ("Trade of chapter 28, not elsewhere specified"): 8,327 of its 30,984 rows of eight characters. Another 1,826 are the letter codes used before 2025 and `ZZZZZZZZ` |
-| `STATISTICAL_PROCEDURES.txt` | Four columns, like `PARTNERS_ISO.txt`: 7 rows, of which 1, 2, 3 and 9 are valid in 2026 |
-| `FLOW.txt` | Two columns: 1 Import, 2 Export |
-| `CN_SECTIONS.txt` | Two columns: the 21 sections of the CN, `TO` (total) and `XX` (not elsewhere specified) |
-| `GEOZONES-PARTNERS_ISO.txt`, in `RELATIONS/` | Four columns: zone, partner code, valid from, valid to. Zone 1010 is the EU and zone 1013 the euro area, both "evolutionary": their members change with the date |
-| `CN_SECTIONS-CHAPTERS.txt`, in `RELATIONS/` | Two columns, section and chapter: 97 chapters, one section each. Chapter 99 belongs to `XX` |
-
-**The zones of the relation hold more than countries.** On 2026-05-01 zone 1010
-holds the 27 member states and the three intra-EU Q codes, QR, QV and QY: exactly
-the partners whose trade is intra-EU (`TRADE_TYPE` I) in the full month of
-202605. Zone 1013 holds the same three Q codes next to its members.
-
-**Zone 1013 has no row for Bulgaria**, which adopted the euro on 2026-01-01
-(Council Decision (EU) 2025/1407 of 8 July 2025): the relation was last
-published on 2025-02-24. Its other 20 members carry their adoption dates.
-[`reference/euro_area_members.csv`](../reference/euro_area_members.csv) holds
-those 20 with the relation's dates, and Bulgaria from 2026-01-01, each with its
-source; `dim_country` takes the euro area from it.
-
-**A code has one row per validity period.** `PARTNERS_ISO.txt` has 342 rows
-and 252 codes valid on 2026-05-01. A join on the code alone multiplies the
-rows; the join picks the row valid in the row's `PERIOD`.
-
-## Values
-
-- `VALUE_EUR` carries at most three decimals (`1775.552`), and `VALUE_NAC` is
-  a whole number, in the full month of 202605. The largest values have 11
-  integer digits in `VALUE_EUR` and 13 in `VALUE_NAC`, in forint. Silver types
-  both as `DECIMAL(18,3)`; a float cannot hold a cent-level identity.
-- **A value below 1 EUR can have no digit before the point**: `.999`, `.99`
-  and `.9`, from the reporters outside the euro area, whose `VALUE_EUR` is a
-  conversion. A cast to a decimal reads them; a pattern for a number that
-  requires a leading digit rejects them.
-- The two quantities are whole numbers, of up to 11 digits.
-- A reporter in the euro area has `VALUE_NAC` equal to `VALUE_EUR`: no row of
-  the seven full months differs.
-- Some X-code rows carry a weight and a value of 0: the value is withheld and the
-  weight published, as in Finland's exports of `72XXXXXX` to Sweden in 202605. A
-  value per kilogram has to leave them out.
-- pandas reads the partner code `NA`, Namibia, as a missing value unless
-  `keep_default_na=False` is passed.
+</details>
 
 ## Silver
 
-Silver turns bronze into two typed tables and checks them. Its rules, and the
-failures each check is expected to find, were measured on the full month of
-202605 as published on 2026-09-15, read with the same reader as bronze, and
-hold over the seven full months of 2026-10-16. The rules live in
-`src/silver.py`, and `notebooks/02_silver_transform.py` applies them (The
-transformation, below). The checks live in `src/silver_checks.py`, with the
-failures each one expects, and `notebooks/03_silver_quality_checks.py` runs
-them (The checks, below).
+<details open>
+<summary><b>Silver splits bronze into two typed tables, the rows by product
+and the <code>TOTAL</code> rows, so no sum over the detail counts a euro
+twice:</b> 5,037,372 and 12,783 rows in July 2026.</summary>
 
-### Two tables
+The rules live in `src/silver.py`, and `notebooks/02_silver_transform.py`
+applies them. The checks live in `src/silver_checks.py`, with the failures
+each one expects, and `notebooks/03_silver_quality_checks.py` runs them (The
+checks, below). The counts are of July 2026, and the rules hold over the
+seven full months.
 
-| Table | Holds | Grain |
-|---|---|---|
-| `trade_detail` | The rows by product: eight-digit codes and X codes | reporter, partner, product_nc, the five parallel classifications (SITC, CPA21, CPA22, BEC, BEC5), flow, stat_procedure, period |
-| `trade_totals` | The `TOTAL` rows | reporter, partner, flow, stat_procedure, period |
+| Table | Holds | Grain | July 2026 | Seven months |
+|---|---|---|---:|---:|
+| `trade_detail` | The rows by product: eight-digit codes and X codes | reporter, partner, product_nc, the five parallel classifications (SITC, CPA21, CPA22, BEC, BEC5), flow, stat_procedure, period | 5,037,372 | 35,164,358 |
+| `trade_totals` | The `TOTAL` rows | reporter, partner, flow, stat_procedure, period | 12,783 | 89,092 |
 
-- The `TOTAL` rows have a grain of their own, so they get a table of their own,
-  and no sum over the detail can count a euro twice. Every one of them reads
-  `TOTAL` in the five classification columns, `TO` in `PRODUCT_SECTION`, `NO_SU`
-  and a quantity of 0, in every full month: the totals table leaves those
-  columns out.
-- The grain of the detail includes the five parallel classifications because an
-  X code can come in several rows, one per SITC code (Product codes that are not
-  eight digits). Without them, the full month of 202605 has 2,932 detail rows in
-  1,178 duplicated keys.
+- The `TOTAL` rows have a grain of their own, so they get a table of their
+  own. They read `TOTAL` in the five classifications, `TO` in the section,
+  `NO_SU` and a quantity of 0 in that unit, in every full month, so their
+  table leaves those columns out.
+- The grain of the detail includes the five parallel classifications because
+  an X code can come in several rows, one per SITC code: Sweden's exports of
+  `29XXXXXX` to QY are 20. Without them, July 2026 has 2,934 detail rows in
+  1,175 repeated keys, every one of them an X code.
 - The Q codes stay, since they count in totals. That they are not countries
-  belongs to the country dimension, from `reference/partner_special_codes.csv`.
+  belongs to `dim_country`, from the seed.
 
-| File | Detail | Totals |
-|---|---:|---:|
-| `full_v2_202605.csv`, 2026-09-15 | 4,975,304 | 12,709 |
-| The seven full months, 2026-10-16 | 35,164,358 | 89,092 |
+The notebook reads the pending months from bronze, stops if a file is
+missing, and writes each table with an overwrite of those months only
+(`replaceWhere` on `period`), so a second run replaces its rows instead of
+adding them. Then it checks that the bronze rows of each file are its detail
+and its totals, each in one batch, and stops otherwise; no test covers that
+check.
 
-### Types, names and sentinels
+<details>
+<summary><code>split_bronze()</code> types and names every column in one
+<code>select</code>, then splits the rows in two: three rows of Austria's
+exports to Switzerland in July 2026 become two rows of detail and one of
+totals.</summary>
+
+The three rows in bronze, all of `REPORTER` AT, `PARTNER` CH, `FLOW` 2 and
+`STAT_PROCEDURE` 1: the `TOTAL` row, and the eight-digit code and the X code
+of the largest value, medicaments and a chapter of inorganic chemicals.
+
+| `PRODUCT_NC` | `PRODUCT_SITC` | `PRODUCT_SECTION` | `SUPPL_UNIT` | `VALUE_EUR` | `QUANTITY_KG` | `QUANTITY_SUPPL_UNIT` |
+|---|---|---|---|---:|---:|---:|
+| `TOTAL` | `TOTAL` | `TO` | `NO_SU` | `948009982` | `199299553` | `0` |
+| `30049000` | `54293` | `06` | `NO_SU` | `201432993` | `72347` | `0` |
+| `28XXXXXX` | `524XX` | `06` | `NO_SU` | `2790723` | `18307` | `0` |
+
+In `trade_detail`, the two rows by product, with 24 columns:
+
+| `product_nc` | `hs2` | `hs4` | `hs6` | `is_x_code` | `suppl_unit` | `value_eur` | `quantity_kg` | `quantity_suppl_unit` |
+|---|---|---|---|---|---|---:|---:|---|
+| `30049000` | `30` | `3004` | `300490` | false | NULL | 201432993.000 | 72347 | NULL |
+| `28XXXXXX` | `28` | NULL | NULL | true | NULL | 2790723.000 | 18307 | NULL |
+
+In `trade_totals`, the `TOTAL` row keeps 11 columns, with `value_eur`
+948009982.000 and `quantity_kg` 199299553. Both tables keep `_source_file`,
+which the checks count by, and the notebook adds the `_batch_id` of its run;
+their columns are in the [data dictionary](data_dictionary.md#silver). Over
+July 2026, `is_x_code` marks 78,498 rows; `hs6` is NULL in 50,629, `hs4` in
+47,801 and `hs2` in none; `suppl_unit` and its quantity in 3,656,762, exactly
+the rows that read `NO_SU`. The totals add up by trade type and flow to the
+sums that reconcile with the published figures (The source).
+
+</details>
+
+<details>
+<summary>Codes stay text, values are <code>DECIMAL(18,3)</code> and
+<code>NO_SU</code> becomes NULL; Spark itself has two ways to break this
+without an error.</summary>
 
 | Column | Rule |
 |---|---|
-| Every column | Named after the source column in snake_case: `REPORTER` becomes `reporter`, `VALUE_EUR` becomes `value_eur` |
-| Codes | Text, every one of them, `flow` and `stat_procedure` included: a code is not a number |
-| `period` | Text, `YYYYMM`, and the partition column. `period_date`, its first day, picks the valid row of each code list |
-| `value_eur`, `value_nac` | `DECIMAL(18,3)`: at most 3 decimals and 13 integer digits are measured (Values) |
+| Codes | Text, every one of them, `flow` and `stat_procedure` included: a code is not a number. `period` is `YYYYMM`, and `period_date`, its first day, picks the valid row of each code list |
+| `value_eur`, `value_nac` | `DECIMAL(18,3)`: at most 3 decimals and 13 integer digits are measured ([data dictionary](data_dictionary.md#bronze)). A float cannot hold a cent-level identity. `value_nac` stays as published: no question reads it |
 | `quantity_kg`, `quantity_suppl_unit` | `BIGINT`: whole numbers of at most 11 digits |
 | `suppl_unit` | `NO_SU` becomes NULL, and so does its `quantity_suppl_unit`, which is 0 in every `NO_SU` row: check 12c finds no other in the seven full months. With a real unit a 0 stays |
 | `quantity_kg` | A 0 stays 0: nothing in the file tells "not reported" from "less than half a kilogram". Check 6a counts it, and a value per kilogram exists only with a positive weight |
-| `value_nac` | As published: no question reads it |
-| `hs2`, `hs4`, `hs6` | Truncations of `product_nc`. An X code reaches only the level it keeps, `28XXXXXX` hs2, `2833XXXX` hs4 and `283321XX` hs6, and below that they are NULL. `is_x_code` marks those rows. Chapter 99 follows the same rule, though it belongs to the CN and not to the HS: 2,131 rows and 5,449.9 M EUR in the full month of 202605 |
-
-Two ways to break this without an error:
+| `hs2`, `hs4`, `hs6` | Truncations of `product_nc`, NULL below the level an X code keeps. Chapter 99 follows the same rule, though it belongs to the CN and not to the HS: 2,146 rows and 6,112.9 M EUR in July 2026 |
 
 - **Spark resolves column names without regard to case.** A column named
   `value_eur` added to a frame that holds `VALUE_EUR` replaces it, so code that
   still reads `VALUE_EUR` gets the typed copy. Measured on that column, the
   number of decimals is the scale of the type, 10, not the 3 of the file.
-- **Spark 4 casts in ANSI mode.** Text that is not a number fails the cast, which
-  is wanted, but a fourth decimal would be rounded to the scale without a
-  warning: `1.2345` becomes `1.235`. Check 12 compares each value cast to the
+- **Spark 4 casts in ANSI mode.** Text that is not a number fails the cast,
+  which is wanted, but a fourth decimal would be rounded to the scale without
+  a warning: `1.2345` becomes `1.235`. Check 12 compares each value cast to the
   silver type with the same value cast without loss.
 
-### The transformation
+</details>
 
-`split_bronze()` in `src/silver.py` types and names the bronze rows in a single
-`select`, so no typed column sits next to its source column, and returns the
-two tables:
-
-| Table | Columns |
-|---|---|
-| `trade_detail` | `reporter`, `partner`, `trade_type`, `product_nc`, `hs2`, `hs4`, `hs6`, `is_x_code`, the five parallel classifications and `product_section`, `flow`, `stat_procedure`, `period`, `period_date`, `suppl_unit`, `value_eur`, `value_nac`, `quantity_kg`, `quantity_suppl_unit` |
-| `trade_totals` | `reporter`, `partner`, `trade_type`, `flow`, `stat_procedure`, `period`, `period_date`, `value_eur`, `value_nac`, `quantity_kg` |
-
-Both keep `_source_file` from bronze, which the checks count by, and add the
-`_batch_id` of the silver run. `is_x_code` marks a `product_nc` of digits
-followed by X; `hs2`, `hs4` and `hs6` are its first 2, 4 or 6 characters when
-those are all digits, and NULL otherwise.
-
-The notebook reads from bronze the files of the pending months, and stops if
-one is missing. It writes each table with an overwrite of those months only
-(`replaceWhere` on `period`, the partition column), so a second run replaces
-its rows instead of adding them; the same write creates the table on the first
-run. Then it checks each file: its bronze rows are the detail and the totals,
-and each table holds one batch of it. Any other result stops the run. That
-check lives in the notebook, and no test covers it.
-
-Measured on the full month of 202605 as published on 2026-09-15, with the
-counts per table of "Two tables" above:
-
-| File | `is_x_code` | `hs6` NULL | `hs4` NULL | `suppl_unit` NULL |
-|---|---:|---:|---:|---:|
-| `full_v2_202605.csv` | 98,913 | 51,815 | 49,031 | 3,619,565 |
-
-- `hs2` is never NULL, and `suppl_unit` is NULL exactly in the bronze rows that
-  read `NO_SU`, with `quantity_suppl_unit` NULL in the same rows.
-- The totals add up by trade type and flow to the sums of the `TOTAL` rows
-  that reconcile with the published figures, to 0.001 M EUR; GB adds up to
-  14,691.353 M EUR of imports and 29,993.397 of exports. The detail adds up to
-  1,156,578.379 M EUR.
+</details>
 
 ### The checks
 
@@ -631,7 +403,7 @@ expectation of 0 then fails the run.
   the same access policy as the files. A month that stays `current` keeps the
   copy it has, since figures fetched later could belong to a later publication;
   a month replaced takes the figures of its new publication, or loses its old
-  copy if the table holds none yet (The Volume's manifest). For a month the
+  copy if the table holds none yet (Landing and the manifest). For a month the
   table does not hold yet, the API answers 200 with no value: no copy is
   written, a warning says so, and check 10 does not evaluate that file. The
   check can fail: against the table as revised on 2026-10-16, the full month of
@@ -719,7 +491,7 @@ questions, below).
 
 - **The `TOTAL` rows name the real partner; the rows by product do not.** The
   rows by product book 9,071.8 M EUR of the full month, 0.78%, under QY and QZ
-  (Partner confidentiality). A ranking of partners read from them puts Norway
+  (Partners and products). A ranking of partners read from them puts Norway
   at 14,832.7 M EUR instead of 16,500.4. Over the whole month the two facts
   agree within 0.064 M EUR.
 - **The parallel classifications stay on the row, as codes**: they describe
@@ -762,10 +534,11 @@ questions, below).
   codes. `ZZ` ("No data, work code") has none, and is not in the data.
 - `is_country` is false, and `partner_category` the seed's, for the 10 codes of
   `reference/partner_special_codes.csv`; every other code is a country.
-- **The X codes come from `CN.txt`**, which lists them (Code lists). Every X
-  code of the seven months has a row valid in its month, so `dim_product` needs
-  no row of its own making. The hierarchy is silver's: an X code stops at its
-  own level, and `28XXXXXX` has no `hs4`. The section is the chapter's, from
+- **The X codes come from `CN.txt`**, which lists them (data dictionary, Code
+  lists). Every X code of the seven months has a row valid in its month, so
+  `dim_product` needs no row of its own making. The hierarchy is silver's: an
+  X code stops at its own level, and `28XXXXXX` has no `hs4`. The section is
+  the chapter's, from
   `CN_SECTIONS-CHAPTERS.txt`; every chapter of the data has one.
 
 ### What each business question reads
@@ -1151,7 +924,7 @@ records, per file, the publication it processed:
 |---|---|
 | `source_file` | The landed CSV |
 | `period` | Its month |
-| `published_at`, `archive_bytes` | The publication of its archive, as the Volume's manifest recorded it (The Volume's manifest) |
+| `published_at`, `archive_bytes` | The publication of its archive, as the Volume's manifest recorded it (Landing and the manifest) |
 | `batch_id`, `processed_at` | The run of the gold checks that passed on it |
 
 A month is pending when the manifest dates its archive differently from the
@@ -1285,7 +1058,7 @@ the run, naming its parameter; so does a window that ends before it starts.
 
 | Notebooks | Window | With `end_period` empty |
 |---|---|---|
-| `00_land` | The months of the listing, from `start_period` to `end_period` | To the month before the last one listed (The newest month lacks most of its intra-EU trade) |
+| `00_land` | The months of the listing, from `start_period` to `end_period` | To the month before the last one listed (The source) |
 | `01` to `05` | The months of the Volume's manifest, from `start_period` to `end_period` | To the last month the manifest names |
 
 `config.months_in_window()` reads the months from the names of the monthly
@@ -1370,9 +1143,9 @@ Edition is never reached.
 
 **The landing is the first task.** It downloads from `ec.europa.eu` on the
 serverless compute of the Job, which reaches the internet on Free Edition, and
-writes to the Volume through the driver's disk (The landing goes through the
-driver's disk). A run therefore processes what it landed itself, with no step
-outside the workspace.
+writes to the Volume through the driver's disk (Landing and the manifest). A
+run therefore processes what it landed itself, with no step outside the
+workspace.
 
 `src/deploy_job.py` creates the Job from the file, or replaces the settings of
 the one of the same name, so the workspace runs what the repository holds. Two
@@ -1395,7 +1168,7 @@ Two runs over the seven full months of 202601 to 202607:
 
 | Run | Result |
 |---|---|
-| `end_period` 202607, with the CSV of 202607 deleted from the Volume and its row from the watermark | The seven tasks succeeded in 13 minutes. The landing landed 202607 again from Eurostat (The Volume's manifest), and the notebooks took it as pending: 5,050,155 rows in bronze and 35,253,450 in total; 5,037,372 and 12,783 in silver and the facts; 26 silver results, 06a at 283,190 and check 10 at 0 of 6; both `MERGE` at 0 updated and 0 inserted, and 7 rows in `dim_period`; 30 gold results, check 07 at 2 of 240 groups and check 08 over the seven months; the watermark back at 7 rows. The 42 lines of the views identical, byte for byte, to those of the incremental run, and the answers with 162, 27, 27, 97, 162 and 2,749 rows |
+| `end_period` 202607, with the CSV of 202607 deleted from the Volume and its row from the watermark | The seven tasks succeeded in 13 minutes. The landing landed 202607 again from Eurostat (Landing and the manifest), and the notebooks took it as pending: 5,050,155 rows in bronze and 35,253,450 in total; 5,037,372 and 12,783 in silver and the facts; 26 silver results, 06a at 283,190 and check 10 at 0 of 6; both `MERGE` at 0 updated and 0 inserted, and 7 rows in `dim_period`; 30 gold results, check 07 at 2 of 240 groups and check 08 over the seven months; the watermark back at 7 rows. The 42 lines of the views identical, byte for byte, to those of the incremental run, and the answers with 162, 27, 27, 97, 162 and 2,749 rows |
 | The defaults | The seven tasks succeeded in 8 minutes. The landing left 202608 out and landed nothing; notebooks 01 to 05 took their window to the last month landed and found nothing pending, in 10 to 17 seconds each; the views printed the same 42 lines, byte for byte |
 
 What runs from a remote repository as from a Git folder:

@@ -3,7 +3,8 @@
 Every column of the tables and views the pipeline writes, with its type as the tables hold it.
 Names follow the source: each COMEXT column becomes its name in snake_case, `REPORTER` becomes
 `reporter` and `VALUE_EUR` becomes `value_eur`. Why each column is typed as it is, and what each
-sentinel becomes, is in [`engineering-notes.md`](engineering-notes.md), Silver.
+sentinel becomes, is in [`engineering-notes.md`](engineering-notes.md), Silver. The layout of the
+code lists the pipeline reads is in [Code lists](#code-lists), at the end.
 
 ## Bronze
 
@@ -30,6 +31,20 @@ One row per data row of a landed file, as landed. Partitioned by `PERIOD`.
 | `_ingested_at` | timestamp | When the bronze run started, in UTC |
 | `_source_file` | string | The landed CSV the row came from, such as `full_v2_202607.csv` |
 | `_batch_id` | string | The bronze run, a UUID |
+
+What the values hold as text, in July 2026:
+
+- `VALUE_EUR` has at most three decimals and 11 integer digits, and `VALUE_NAC` is a whole number
+  of up to 13 digits, in forint: silver types both as `decimal(18,3)`. The two quantities are whole
+  numbers of up to 11 digits.
+- A value below 1 EUR can have no digit before the point, as `.082`: 6,619 values, all of
+  reporters outside the euro area, whose `VALUE_EUR` is a conversion. A cast reads them, and a
+  pattern that requires a leading digit rejects them.
+- A reporter in the euro area has `VALUE_NAC` equal to `VALUE_EUR`: no row of the seven full months
+  differs.
+- 664 rows with an X code carry a weight and a value of 0, the value withheld and the weight
+  published, as Finland's exports of `72XXXXXX` to Sweden. Question 5 reads only rows with a value
+  and a weight.
 
 ## Silver
 
@@ -196,3 +211,34 @@ of both layers matched its expectation.
 | `published_at` | string | The publication time of its archive, `YYYY-MM-DDTHH:MM:SS`, as the Volume's manifest recorded it |
 | `archive_bytes` | bigint | The size of its archive |
 | `batch_id`, `processed_at` | string, timestamp | The run of the gold checks that passed on it |
+
+## Code lists
+
+The nine lists the landing downloads in every run into `code_lists/` in the Volume, from
+`COMEXT_METADATA/CLASSIFICATIONS_AND_RELATIONS/` of the bulk download facility: UTF-8, tab
+separated, with no header row. The silver checks and the gold dimensions read them as text. A date
+is `dd/mm/yyyy`, and `31/12/2500` means still valid.
+
+| List | Columns | Holds |
+|---|---|---|
+| `PARTNERS_ISO.txt` | Code, valid from, valid to, name | 342 rows, and 252 codes valid on 2026-07-01 |
+| `GEOZONES.txt` | Code, valid from, valid to, name | The zones, such as 1010, the EU |
+| `GEOZONES-PARTNERS_ISO.txt`, in `RELATIONS/` | Zone, partner code, valid from, valid to | The members of each zone. Zone 1010 is the EU and zone 1013 the euro area, both "evolutionary": their members change with the date |
+| `TRADE_TYPE.txt` | Code, description | `I` intra-EU, `E` extra-EU, and two codes no full month carries |
+| `CN.txt` | Code, valid from, valid to, description | Every level of the Combined Nomenclature, from 2 to 8 characters, since 1988: 42,587 rows, and 19,092 eight-digit codes, 1,559 of them with more than one row. Of its 30,984 rows of eight characters, 8,327 are X codes, with descriptions and dates of their own, and 1,826 the letter codes used before 2025 and `ZZZZZZZZ` |
+| `CN_SECTIONS.txt` | Code, description | The 21 sections of the CN, `TO` (total) and `XX` (not elsewhere specified) |
+| `CN_SECTIONS-CHAPTERS.txt`, in `RELATIONS/` | Section, chapter | 97 chapters, one section each. Chapter 99 belongs to `XX` |
+| `STATISTICAL_PROCEDURES.txt` | Code, valid from, valid to, description | 7 rows, of which 1, 2, 3 and 9 are valid in 2026 |
+| `FLOW.txt` | Code, description | `1` Import, `2` Export |
+
+- **A code has one row per period of validity**, so a join on the code alone multiplies the rows:
+  every join picks the row valid on the row's `period_date`.
+- **Zone 1010 holds more than countries.** On 2026-07-01 it holds the 27 member states and the
+  three intra-EU Q codes, QR, QV and QY: exactly the partners traded as intra-EU in July 2026. Zone
+  1013 holds the same three Q codes next to its members.
+- **Zone 1013 has no row for Bulgaria**, in the euro area since 2026-01-01 (Council Decision (EU)
+  2025/1407 of 8 July 2025): the relation was last published on 2025-02-24. Its other 20 members
+  carry their adoption dates.
+  [`reference/euro_area_members.csv`](../reference/euro_area_members.csv) holds those 20 with the
+  relation's dates, and Bulgaria from 2026-01-01, each with its source; `dim_country` takes the
+  euro area from it.
