@@ -8,8 +8,8 @@ of the count is depends on the check: a row of the table it reads, or a
 published figure for check 10.
 
 The rules, and the measurements behind each expected failure, are in
-docs/engineering-notes.md, section Silver, The checks. No check starts a
-Python worker, which on the development machine costs about ten seconds per
+docs/engineering-notes.md, section Quality checks. No check starts a Python
+worker, which on the development machine costs about ten seconds per
 query: the code lists and the copies of the published figures are read with
 Spark's own readers, and every rule is a Column. The numbers of the checks
 retired are not reused, so a name in ops.dq_check_results keeps its meaning.

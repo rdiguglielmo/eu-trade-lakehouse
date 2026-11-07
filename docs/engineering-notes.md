@@ -29,7 +29,7 @@ run).
 **The newest month of the listing lacks most of its intra-EU trade**, which
 Eurostat publishes with the next monthly release (manual, pp. 56-57): 202608,
 as listed on 2026-10-20, held that of 9 of the 27 reporters. An open window
-therefore stops at the month before the last one listed (The window of a run).
+stops at the month before the last one listed (The incremental run).
 
 <details>
 <summary>Every file carries its own totals as rows, <code>PRODUCT_NC =
@@ -97,8 +97,8 @@ value of the rows by product.</summary>
 - **A partner confidential at product level moves to QY (intra-EU) or QZ
   (extra-EU) in the rows by product, while its `TOTAL` row still names it**
   (pp. 41-43): 3,422.5 and 6,315.7 M EUR in July 2026. Questions by partner
-  read the totals, and questions by product the rows by product (Gold, What
-  each business question reads).
+  read the totals, and questions by product the rows by product (The business
+  questions).
 - **Product codes ending in X hold confidential or estimated trade, or trade
   that simplification leaves without an eight-digit code** (pp. 28 and 40), at
   the level of a chapter (`28XXXXXX`), a heading (`2833XXXX`) or a subheading
@@ -118,12 +118,12 @@ driver's disk.</b> Its last run found the seven months of 2026 current, landed
 none, and downloaded the nine code lists again.</summary>
 
 `land()` in `src/land.py`, the first task of the Job, reads the listing once,
-before any download, and takes the months of the window from it (The window of
-a run). `manifest.csv`, at the root of the Volume, records each landed archive
-with its size and publication time, and `plan_months()` compares the two: a
-`new` month is landed, a `replace` one landed over what is there, a `current`
-one left alone, and a month whose CSV is missing is `replace`. With 202605 as
-it first landed, against today's listing:
+before any download, and takes the months of the window from it (The
+incremental run). `manifest.csv`, at the root of the Volume, records each
+landed archive with its size and publication time, and `plan_months()`
+compares the two: a `new` month is landed, a `replace` one landed over what
+is there, a `current` one left alone, and a month whose CSV is missing is
+`replace`. With 202605 as it first landed, against today's listing:
 
 | Archive | In the manifest | In the listing | Status |
 |---|---|---|---|
@@ -242,8 +242,8 @@ twice:</b> 5,037,372 and 12,783 rows in July 2026.</summary>
 
 The rules live in `src/silver.py`, and `notebooks/02_silver_transform.py`
 applies them. The checks live in `src/silver_checks.py`, with the failures
-each one expects, and `notebooks/03_silver_quality_checks.py` runs them (The
-checks, below). The counts are of July 2026, and the rules hold over the
+each one expects, and `notebooks/03_silver_quality_checks.py` runs them
+(Quality checks). The counts are of July 2026, and the rules hold over the
 seven full months.
 
 | Table | Holds | Grain | July 2026 | Seven months |
@@ -330,503 +330,71 @@ without an error.</summary>
 
 </details>
 
-### The checks
-
-Each check writes one row per table it reads and per source file into
-`ops.dq_check_results`, a Delta table in a schema apart from the data, which
-every run appends to:
-
-| Column | Holds |
-|---|---|
-| `check_name` | The number of the check and what it asks, such as `06a_kg_zero_with_value`: the names of `CHECKS` in `src/silver_checks.py`, and in `src/gold_checks.py` for gold |
-| `layer` | `silver`, or `gold` for the checks of gold (Gold, The checks of gold) |
-| `table_name` | The table the check reads. Checks 08b, 12a and 12c read bronze, where the columns they look at are still as landed |
-| `source_file` | The landed file the rows come from, or NULL for a check of a gold dimension, which reads every version |
-| `batch_id`, `run_at` | The run of the checks that wrote the row |
-| `rows_checked` | What the check read: rows of the table, or published figures for 10. In gold, the one sum of a file for 04, and groups for 07 |
-| `rows_failed` | How many of them break the rule, or NULL if the check could not evaluate the file |
-| `expected_failures` | The count the check is expected to find there, or NULL if it is expected to find a range, or not to evaluate the file |
-| `severity` | `error`, for every check |
-| `expected_min`, `expected_max` | The range the check is expected to fall in, both included, or NULL if it expects a count |
-
-**Every month expects the same rule**, whatever the month and its
-publication: `EXPECTED` in `src/silver_checks.py` names the checks expected to
-find something, and every other check is expected at 0. A month new to the
-pipeline, or one republished with other counts under the same file name, needs
-nothing declared. A rule is a count, NULL for not evaluated, or a `Rate`: a
-share of the rows the check read, which the notebook turns into a range of
-rows, rounded inward, from the file's `rows_checked`. Check 10 of a file that
-landed without a copy of the published figures expects NULL: it has nothing to
-compare.
-
-The notebook appends the results first, then reads back those of its batch and
-compares: a count that differs from its expectation, up or down, or falls
-outside its range, fails the run, and so does NULL against a number, either
-way. A rate over a file the check could not evaluate becomes the range 0 to 0,
-which NULL does not meet. A run that fails leaves its results in the table.
-
-A file a check returns nothing for was not evaluated, so a check that compares
-nothing does not pass unless it is expected not to evaluate: a check over a
-table that lacks one of the files of the run returns nothing for it, and its
-expectation of 0 then fails the run.
-
-| Check | Rule | Reads | Expected |
-|---|---|---|---:|
-| `01_country_valid` | `reporter` and `partner` have a row of `PARTNERS_ISO.txt` valid on `period_date` | both tables | 0 |
-| `02_product_valid` | `product_nc` is eight digits valid in `CN.txt` on `period_date`, or an X code of chapter, HS4 or HS6 | detail | 0 |
-| `03_codes_in_domain` | `flow` in (1, 2); `trade_type` in (I, E); `stat_procedure` valid in `STATISTICAL_PROCEDURES.txt` | both tables | 0 |
-| `04_period_matches_file` | `period` is the month in the file name | both tables | 0 |
-| `05_values_not_negative` | `value_eur` and `value_nac` are not negative | both tables | 0 |
-| `06a_kg_zero_with_value` | `quantity_kg` is 0 with a positive `value_eur`: counted, not dropped | detail | 5.0% to 6.0% of the rows |
-| `08b_total_row_shape` | Every `TOTAL` row reads `TOTAL`, `TO`, `NO_SU` and 0 | bronze | 0 |
-| `09_no_duplicate_on_grain` | No duplicate on the grain | both tables | 0 |
-| `10_totals_match_published` | Totals by `trade_type` and `flow` against EU27_2020 and EXT_EU27_2020, and GB against UK: within 0.05 M EUR of the figures of the same publication | totals | 0 of 6, or not evaluated without a copy |
-| `11_trade_type_matches_eu` | `trade_type` is I exactly when the partner belongs to zone 1010 of `GEOZONES-PARTNERS_ISO.txt` on `period_date` | both tables | 0 |
-| `12a_cast_lossless` | Every value cast to its silver type equals the same value cast without loss, and is a number | bronze | 0 |
-| `12b_null_only_from_sentinel` | No NULL except in `suppl_unit` and its quantity together, from `NO_SU`, and in `hs4` and `hs6` below the level of an X code | both tables | 0 |
-| `12c_no_su_quantity_zero` | `NO_SU` always with a quantity of 0, which silver turns to NULL | bronze | 0 |
-
-- **The rate of 06a** holds the six full months of 202601 to 202606 with a
-  margin: it found 5.312% to 5.586% of their detail rows. The margin is there
-  for the months to come: 06a found 5.622% in 202607. A count outside the range
-  stops the run, as a count off its expectation does, so a change of the rule,
-  or of the data, still shows.
-- **The numbers of the checks retired are not reused**: 06b, 07 and 08a, which
-  described columns no question reads or repeated what a test and gold check
-  07 cover. A `check_name` in `ops.dq_check_results` keeps one meaning across
-  runs.
-- **Check 10** reads a copy of the published figures saved with the landed
-  file, holding `period`, `partner`, `stk_flow`, `value_meur` and
-  `table_updated`: never the live table, which is revised together with the
-  files. The landing saves the copy when it lands a month, in the same run:
-  `published/<CSV name>` in the Volume, fetched from the statistics API through
-  the same access policy as the files. A month that stays `current` keeps the
-  copy it has, since figures fetched later could belong to a later publication;
-  a month replaced takes the figures of its new publication, or loses its old
-  copy if the table holds none yet (Landing and the manifest). For a month the
-  table does not hold yet, the API answers 200 with no value: no copy is
-  written, a warning says so, and check 10 does not evaluate that file. The
-  check can fail: against the table as revised on 2026-10-16, the full month of
-  202605 as published on 2026-09-15 misses all 6 figures, by 19.8 to 248.5 M
-  EUR. Each of the seven full months landed with its copy, six figures with
-  `updated` = `2026-10-16T11:00:00+0200`, the revision of their files.
-- **Check 11** is the intra-EU logic. Zone 1010 holds the 27 member states and
-  the three intra-EU Q codes, and no other partner is traded as intra-EU.
-- **Check 12** comes in three parts because each reads a different table.
-  12a follows from the maximums measured: 3 decimals and 13 integer digits fit
-  `DECIMAL(18,3)`, and the cast reads every value, `.999` included. It compares
-  in bronze, where the value is still text, so a value that is not a number
-  counts there instead of stopping the run. 12c reads bronze too, since silver
-  turns the quantity of `NO_SU` to NULL. 12b reads the silver tables.
-- **No check starts a Python worker**: the code lists are read as text and
-  split on the tab, the seed and the copies with Spark's CSV reader, and every
-  rule is a column expression. A code list is not read as CSV because 5,078
-  lines of `CN.txt` hold a double quote. A code has a row per period of
-  validity, so the checks join on the code and the date against pairs of each
-  valid code with each `period_date` present, which match a row at most once.
-  The only query with a worker is the one that writes the results.
-
-#### What the checks found
-
-On the full month of 202605 as published on 2026-09-15, every check found
-exactly its expected failures: 06a 274,613 of 4,975,304 detail rows. Every
-other check found nothing, check 10 included, against the six
-published figures of the same publication. 12a and 12c read the 4,988,013
-bronze rows of the month.
-
-Over the full months of 202601 to 202606, 202605 from the publication of
-2026-09-15 and the other five from that of 2026-10-16, every check again found
-exactly its expected failures, 06a within its range in each month. Every other
-check found nothing in any month, and check 10 matched all 36 published
-figures, the largest gap 0.047 M EUR.
-
-| File | Detail rows | `06a_kg_zero_with_value` |
-|---|---:|---:|
-| `full_v2_202601.csv` | 4,865,450 | 271,808 |
-| `full_v2_202602.csv` | 4,988,110 | 271,767 |
-| `full_v2_202603.csv` | 5,136,739 | 272,844 |
-| `full_v2_202604.csv` | 5,064,050 | 272,068 |
-| `full_v2_202605.csv` | 4,975,304 | 274,613 |
-| `full_v2_202606.csv` | 5,090,991 | 281,201 |
-
-The two files of the incremental run (The incremental run), each within the
-range of its rule, and every other check as over the six:
-
-| File | Detail rows | `06a_kg_zero_with_value` |
-|---|---:|---:|
-| `full_v2_202605.csv`, of 2026-10-16 | 4,981,646 | 274,225, range 249,083 to 298,898 |
-| `full_v2_202607.csv` | 5,037,372 | 283,190, range 251,869 to 302,242 |
-
-- The expectations of the five new months were counted before the checks ran,
-  without Spark: each CSV read with pandas, every value as an integer of
-  thousandths of a euro, and the rules of 06a, 10 and gold 07 applied as
-  `src/silver_checks.py` and `src/gold_checks.py` write them. On 202605 that
-  count gave every known number first, 12,709 `TOTAL` rows, 274,613, 0 of 6
-  figures and 2 of 239 groups, and only then were its counts of the other
-  months declared.
-- **A check off by one row stops the run.** With an expectation of 06a moved
-  one row off what the check counts, up and then down, each run wrote its
-  results and stopped, naming the check, the table, the file and both counts.
-
 ## Gold
 
-Gold is the dimensional model over silver: two facts, one per silver table,
-and the dimensions they point to. `src/gold.py` builds them, and
-`notebooks/04_gold_dimensional_model.py` writes them to the `gold` schema. The
-design was measured on the full month of 202605 as published on 2026-09-15,
-with the dimensions built from the code lists and the seeds, and the notebook
-writes the same counts from the same file. The checks of gold live in
-`src/gold_checks.py`, with the failures each one expects, and
-`notebooks/05_gold_quality_checks.py` runs them (The checks of gold, below).
-The views of `sql/gold_views.sql` answer the five business questions over the
-star, and `notebooks/06_gold_views.py` creates them (The views of the business
-questions, below).
+<details open>
+<summary><b>Two facts, the two silver tables with each code replaced by the
+key of the version valid in its month, and five dimensions read from the code
+lists and the seeds.</b> The totals name the partner the rows by product
+hide: read from the detail, Norway's July 2026 is 11.2% smaller.</summary>
 
-### Two facts, one per silver table
+`src/gold.py` builds the star, and `notebooks/04_gold_dimensional_model.py`
+writes it to the `gold` schema. `fct_trade_detail` and `fct_trade_totals` keep
+the grain of the two silver tables (Silver), one fact row per silver row, with
+the reporter, the partner and the product replaced by the key of their
+version; their columns are in the [data dictionary](data_dictionary.md#gold).
 
-| Table | Grain | Other columns |
+**Two facts, because the two kinds of rows name different partners.** The
+rows by product book a partner confidential at product level under QY or QZ
+(Partners and products): over every reporter and both flows, Norway's July
+is 16,331.6 M EUR in the totals and 14,500.0 in the detail. Questions by
+partner read the totals, and questions by product the detail. Over the whole
+month the two facts are 66,547.619 EUR apart (Quality checks).
+
+Each fact replaces its pending months, as silver does, and looks its keys up
+in the dimension tables as written, so a fact joins what was recorded. The
+notebook stops unless, per file, every silver row is one fact row of the
+run's batch with every key resolved: 5,037,372 and 12,783 rows in July 2026.
+
+| Table | One row per | Sources |
 |---|---|---|
-| `fct_trade_detail` | `reporter_key`, `partner_key`, `product_key`, the five parallel classifications, `flow`, `stat_procedure`, `period` | `trade_type`, `product_section`, `suppl_unit`, `value_eur`, `value_nac`, `quantity_kg`, `quantity_suppl_unit`, `_source_file`, `_batch_id` |
-| `fct_trade_totals` | `reporter_key`, `partner_key`, `flow`, `stat_procedure`, `period` | `trade_type`, `value_eur`, `value_nac`, `quantity_kg`, `_source_file`, `_batch_id` |
+| `dim_country` | Version of a partner code | `PARTNERS_ISO.txt`; zone 1010 and the continent zones of `GEOZONES-PARTNERS_ISO.txt`, named from `GEOZONES.txt`; the seeds `euro_area_members.csv` and `partner_special_codes.csv` |
+| `dim_product` | Version of an eight-character code of `CN.txt` | `CN.txt`, `CN_SECTIONS-CHAPTERS.txt`, `CN_SECTIONS.txt` |
+| `dim_flow` | Flow | `FLOW.txt` |
+| `dim_stat_procedure` | Procedure | `STATISTICAL_PROCEDURES.txt`: 7 codes, one row each |
+| `dim_period` | Month | The months of silver |
 
-- **The `TOTAL` rows name the real partner; the rows by product do not.** The
-  rows by product book 9,071.8 M EUR of the full month, 0.78%, under QY and QZ
-  (Partners and products). A ranking of partners read from them puts Norway
-  at 14,832.7 M EUR instead of 16,500.4. Over the whole month the two facts
-  agree within 0.064 M EUR.
-- **The parallel classifications stay on the row, as codes**: they describe
-  the row, not the product. In the full month of 202605 they take 3,956
-  distinct combinations. Three eight-digit codes take a second one in a single
-  row, with a confidential SITC code: `15042090` reads SITC `41112` in 585 rows
-  and `411XX` in one. Of the 5,114 X codes, 100 take several, up to 17. As
-  attributes of the product they would not fit, and no business question reads
-  them.
-- `product_section` is the section the row reads, and `dim_product` holds the
-  section of the product's chapter. They differ only in `99XXXXXX` rows that
-  read `04`: 164 rows of the full month of 202605.
-- **No value per kilogram on the fact.** A ratio per row does not add up:
-  question 5 divides sums.
-- Each fact is written as silver is, with an overwrite of the pending months.
-  Its keys are looked up in the dimension tables as written, so a fact joins
-  what was recorded. The notebook stops unless, per file, every silver row is
-  one fact row, of the run's batch, with every key resolved: 4,975,304 detail
-  rows and 12,709 totals rows in the full month of 202605.
+**The dimensions read the code lists and the seeds as they are, with no
+bronze table of their own**: reference data of about 6.5 MB, which the source
+already versions and the landing replaces whole on every run. `dim_country`
+and `dim_product` keep a row per version and load by MERGE (Dimensions with
+history, below); the other three are rebuilt with an overwrite.
 
-### Dimensions
+<details>
+<summary>Five places where a column of gold reads as something
+else.</summary>
 
-| Table | One row per | Columns | Sources |
-|---|---|---|---|
-| `dim_country` | Version of a partner code | `country_key`, `country_code`, `country_name`, `is_country`, `partner_category`, `is_intra_eu`, `is_euro_area`, `region_zone`, `region`, `valid_from`, `valid_to`, `is_current` | `PARTNERS_ISO.txt`; zone 1010 and zones 5100 to 5900 of `GEOZONES-PARTNERS_ISO.txt`, named from `GEOZONES.txt`; `reference/euro_area_members.csv`; `reference/partner_special_codes.csv` |
-| `dim_product` | Version of an eight-character code of `CN.txt` | `product_key`, `product_nc`, `description`, `is_x_code`, `hs6`, `hs4` and `hs2` with their descriptions, `section_code`, `section_description`, `valid_from`, `valid_to`, `is_current` | `CN.txt`, `CN_SECTIONS-CHAPTERS.txt`, `CN_SECTIONS.txt` |
-| `dim_flow` | Flow | `flow`, `flow_name` | `FLOW.txt` |
-| `dim_stat_procedure` | Procedure | `stat_procedure`, `description`, `valid_from`, `valid_to` | `STATISTICAL_PROCEDURES.txt`: 7 codes, one row each |
-| `dim_period` | Month | `period`, `period_date`, `year`, `quarter`, `month` | The months of silver |
+- **`is_intra_eu`, not `is_eu_member`.** Zone 1010 holds the member states and
+  QR, QV and QY, which are not states. Check 11 compares `trade_type` with it.
+- **`region` is the continent zone**, 5100 Europe to 5900 not specified. On
+  2026-07-01 every code of the month has one, except QR, QV and QY, listed in
+  both 5100 and 5900, which take 5900.
+- **`is_country` is false for the 10 codes of the seed
+  `partner_special_codes.csv`**, and true for every other code.
+- **The X codes come from `CN.txt`**, which lists them with a description and
+  dates: `dim_product` holds no row of its own making. Their hierarchy is
+  silver's, so `28XXXXXX` has no `hs4`.
+- **The section on the fact row is the one the row reads**, and that of
+  `dim_product` is its chapter's. They differ only in 175 rows of July 2026,
+  codes `99XXXXXX` that read `04`; the views take the chapter's.
 
-- **`dim_country` and `dim_product` keep their history**, one row per version
-  of a code (Dimensions with history, below); the other three are rebuilt
-  with an overwrite.
-- **`is_intra_eu`, not `is_eu_member`.** Zone 1010 holds QR, QV and QY, which
-  are not member states. It is the zone check 11 compares `trade_type` with.
-- **`region` is the continent zone**: 5100 Europe, 5200 Africa, 5300 America,
-  5400 Asia, 5500 Oceania and polar regions, 5900 not specified. QR, QV and QY
-  are listed both in 5100 and in 5900, and take 5900: they are not countries.
-  On the dates of the data every code has exactly one: 48, 59, 50, 49, 33 and 7
-  codes. `ZZ` ("No data, work code") has none, and is not in the data.
-- `is_country` is false, and `partner_category` the seed's, for the 10 codes of
-  `reference/partner_special_codes.csv`; every other code is a country.
-- **The X codes come from `CN.txt`**, which lists them (data dictionary, Code
-  lists). Every X code of the seven months has a row valid in its month, so
-  `dim_product` needs no row of its own making. The hierarchy is silver's: an
-  X code stops at its own level, and `28XXXXXX` has no `hs4`. The section is
-  the chapter's, from
-  `CN_SECTIONS-CHAPTERS.txt`; every chapter of the data has one.
+The five parallel classifications stay on the fact row, as codes, since an X
+code can take several (Silver). No value per kilogram is stored: a ratio per
+row does not add up, and question 5 divides sums.
 
-### What each business question reads
+</details>
 
-| # | Question | Fact | Rule |
-|---|---|---|---|
-| 1 | Main partners, and how the ranking changed | Totals | Only partners where `is_country` are ranked, each month, next to their rank the month before. The Q codes count in the reporter's total |
-| 2 | Products behind a surplus or a deficit | Detail | Exports minus imports by reporter and chapter, over every partner, with the chapter's section |
-| 3 | Intra-EU against extra-EU | Totals by country, detail by chapter | `trade_type` survives confidentiality: QY is intra-EU and QZ extra-EU |
-| 4 | Dependence on a single partner | Detail | By reporter, HS4 and flow, the share of the largest partner that is a country, over the whole flow with the Q codes. The share under Q is reported next to it, so the share is a lower bound. The answer reads the headings that hold at least 1% of the reporter's flow |
-| 5 | Value per kilogram across partners | Detail | Eight-digit codes, a partner that is a country, a positive value and a positive weight, summed over every reporter: the EU as a whole. The ratio divides sums. The answer compares the partners of at least 10 M EUR in the month, the dearest against the cheapest |
-
-- **Question 2 is asked by chapter, with its section next to it.** A section
-  can hold chapters whose balances offset each other, and its own balance
-  hides them. A section's balance is the sum of its chapters.
-- **Question 4 is asked by product, not by reporter.** At the level of
-  reporter and flow the largest partner of Germany's imports in 202605, the
-  Netherlands, holds 14.7%. By HS4, China holds 45.9% of its imports of
-  batteries (8507). Chapter-level X codes reach no HS4 and stay out:
-  29,840.1 M EUR, 2.58% of the detail value of the full month.
-- **A heading counts in the answer of question 4 from 1% of its reporter's
-  flow.** Without a floor, 3,222 of the 59,926 headings of the full month have
-  a single partner at 100%. A floor in euros follows the size of the reporter,
-  and leaves the smallest with almost no heading; a share of the reporter's own
-  flow gives each one the headings that weigh in its trade. The flow is the
-  reporter's whole detail in that direction, X codes of a chapter and Q codes
-  included.
-- **Question 5 keeps 4,600,653 of the 4,876,391 eight-digit rows of the full
-  month**, 94.35%, and 97.76% of their value.
-- **Question 5 compares the partners of the EU as a whole, from 10 M EUR in
-  the month.** Summed over every reporter, a product's partners are the EU's
-  suppliers or customers, the intra-EU ones included, so cheese, wine and cars
-  compare across European partners too. Below 10 M EUR, partners of a few
-  kilograms put noise at the top of the answer. With that floor, 2,585 products
-  of the full month have two partners or more.
-- **A value per kilogram can be wrong where the value is right.** A reporter
-  may keep the quantity confidential and publish the value, to protect the
-  price it implies; in intra-EU trade the net mass of a code with a
-  supplementary unit need not be collected, and is then estimated; and a
-  weight below 0.5 kg reads 0 (manual, pp. 33-34, 40-41 and 49). The manual
-  places the most common errors at the most detailed level, ratios of value to
-  volume among them (p. 48). Motor spirit to Singapore at 912.67 EUR per
-  kilogram, against 0.89 to Angola, is a ratio these leave open; the manual
-  does not say which applies.
-- **An eight-digit code can hold goods of different quality.** `09011100`
-  is every coffee neither roasted nor decaffeinated (`CN.txt`), so a gap
-  between its partners need not be a gap in price for one good.
-
-### The views of the business questions
-
-`sql/gold_views.sql` holds one view per question over the star, and
-`sql/analysis_queries.sql` one query per question that states the answer for
-the latest month loaded. `notebooks/06_gold_views.py` creates the views in the
-gold schema, stops unless every view keeps the value of the fact rows it reads
-in each month and repeats no value of its grain, and runs the queries. Both
-files hold the five questions. `sql/results_queries.sql` holds the queries
-behind the README's Results and Limitations that are not an answer itself:
-counts over an answer, and the rows behind a case it names. It reads the same
-views and facts in the gold schema, and no notebook runs it.
-
-| View | Question | Reads | One row per | Columns |
-|---|---|---|---|---|
-| `vw_partner_ranking` | 1 | `fct_trade_totals` | Month, reporter, flow and partner, over every procedure | `value_eur`, `flow_total_eur`, `share_of_flow`, `partner_rank`, `previous_month_rank`, `rank_change` |
-| `vw_trade_balance_by_chapter` | 2 | `fct_trade_detail` | Month, reporter and chapter | `exports_eur`, `imports_eur`, `balance_eur`, and the chapter's section |
-| `vw_intra_extra_by_country` | 3 | `fct_trade_totals` | Month, reporter and flow | `intra_eu_eur`, `extra_eu_eur`, `intra_eu_share` |
-| `vw_intra_extra_by_chapter` | 3 | `fct_trade_detail` | Month, reporter, chapter and flow | The same, by chapter |
-| `vw_partner_dependence` | 4 | `fct_trade_detail` | Month, reporter, heading and flow, over every procedure | `value_eur`, `top_partner_code` and `top_partner_name`, `top_partner_eur`, `top_partner_share`, `q_codes_eur`, `q_codes_share`, `share_of_reporter_flow`, and the heading's description |
-| `vw_value_per_kg_by_partner` | 5 | `fct_trade_detail` | Month, product, flow and partner, over every reporter and procedure | `value_eur`, `quantity_kg`, `value_per_kg`, the product's description and the partner's `is_intra_eu` |
-
-- **Only partners that are a country are ranked**, with `RANK()`, so tied
-  values share a rank: 45 rows of the full month of 202605 share theirs. The Q
-  codes count in the flow's total, so a share is of the whole flow; the 156
-  rows of Q codes in the full month have no rank.
-- **The rank of the month before is the calendar month's**, joined on
-  `ADD_MONTHS(period_date, -1)`. Where that month is not loaded, or the partner
-  had no trade in it, it is NULL. `LAG` would take the latest month the partner
-  traded in, however far back.
-- **The section is the chapter's**, from `dim_product`, not the section the
-  fact row reads, which is 04 in some `99XXXXXX` rows of chapter 99, section
-  XX.
-- **Every ratio goes through `try_divide`.** Spark runs in ANSI mode, where a
-  division by zero stops the query, and a chapter whose rows carry no value has
-  no share.
-- **The views name their tables without a schema.** The notebook sets the gold
-  schema with `USE` before it creates them, and a view resolves its tables in
-  the schema it was created in: read from `default`, `gold.vw_partner_ranking`
-  returns its rows. The tests register facts and dimensions as temporary views
-  under the same names, and create the views as temporary views over them.
-- The views read every month of the facts, not only the pending ones, and
-  write nothing: a month written again in the facts is in the views at the
-  next read.
-- **The fact rows each view reads are written again in `src/gold_views.py`**,
-  as a query of their month and value, apart from the view: the whole fact for
-  questions 1 to 3, the rows of a product with a heading for question 4, and
-  for question 5 the rows of an eight-digit code with a partner that is a
-  country, a value and a weight. The notebook compares each view with them, so
-  a view that loses, adds or splits rows stops it even where it does not read
-  its whole fact.
-- **The largest partner of a heading is a country with a value.** A Q code is
-  never named and counts in the heading's total; tied values name the lower
-  code, as in 22 headings of the full month. No partner is named where every
-  partner is a Q code, in 55 headings, or where the heading has no value, in 13.
-- **A sum of sums is `DECIMAL(38,3)`, and Spark divides one to 6 decimals.**
-  Divided by a single sum, `DECIMAL(28,3)`, a share keeps 10. At 6, a heading
-  at 0.99996% of its reporter's flow would read 0.010000 and pass the floor of
-  1%. No heading of the full month falls in that band, and the view of question
-  4 casts its sums of sums back to `DECIMAL(28,3)`, so the answer does not
-  depend on it. The test of Austria's share of its flow found it: 0.167306 at 6
-  decimals, 4.6e-7 off the exact share.
-- **The value per kilogram divides the sums.** Austria's and France's boneless
-  beef to the United Kingdom, 39,572 EUR over 3,111 kg, is 12.72 EUR per
-  kilogram, not 12.86, the mean of their 10.45 and 15.26.
-- **The answer of question 5 orders on the quotient Spark computes, to 6
-  decimals, and shows it to 2.** Two products of the full month, at 1.9956 and
-  1.9980, show 2.00: counted on the column shown, 1,173 products are at twice
-  or more, and on the quotient, 1,171.
-- **The floors of questions 4 and 5 live in their queries**, 1% of the
-  reporter's flow and 10 M EUR. The views keep every heading and every partner,
-  so a report can apply another.
-
-Rows of the full month of 202605 as published on 2026-09-15:
-
-| View | Rows |
-|---|---:|
-| `vw_partner_ranking` | 9,522 |
-| `vw_trade_balance_by_chapter` | 2,617 |
-| `vw_intra_extra_by_country` | 54 |
-| `vw_intra_extra_by_chapter` | 5,193 |
-| `vw_partner_dependence` | 59,926 |
-| `vw_value_per_kg_by_partner` | 913,169 |
-
-- Each view keeps the value of the fact rows it reads in every month, to the
-  thousandth of a euro. In the full month, 1,156,578,315,179.473 EUR over the
-  totals and 1,156,578,379,285.260 over the detail: the difference is the
-  64,105.787 EUR of Detail against totals. Question 4 reads
-  1,126,738,271,858.565, the detail without the 29,840,107,426.695 EUR of the X
-  codes of a chapter, and question 5 reads 1,097,396,230,664.621.
-- The answers of the full month of 202605, the only month loaded, so its
-  previous ranks are NULL:
-
-| Question | Answer |
-|---|---|
-| 1 | Germany imports first from the Netherlands, 16,755.8 M EUR or 14.7% of its imports, then China, 7.6%, and Poland, 7.0%. It exports first to the United States, 9.7%, then the Netherlands, 7.6%, and France, 7.4%. Germany is the first partner of 14 reporters' imports and 16 reporters' exports |
-| 2 | 10 of the 27 reporters are in surplus. Germany's +15,832.5 M EUR comes first from chapter 87, vehicles, +7,890.7, against chapter 27, mineral fuels, −6,903.0. Chapter 27 is the largest deficit of 18 reporters |
-| 3 | The intra-EU share of a reporter's imports goes from Slovenia's 35.5% to Luxembourg's 88.5%, and Germany's is 64.5%. Over every reporter, by chapter, it goes from works of art, 9.1%, and ships, 16.7%, to cork, 94.7% |
-| 4 | Croatia imports its crude petroleum from Guyana and Malta its electricity from Italy, 100% each, and Slovakia its gas from Russia, 97.7%. Germany depends most on refined petroleum from the Netherlands, 63.5%, and on batteries from China, 45.9%. Slovenia's medicaments, 40.1% of its exports, go 87.8% to Switzerland. The largest share under the Q codes in the answer is 6.3%, in Estonia's exports of heading 2707 |
-| 5 | 2,585 products have two partners of at least 10 M EUR, and 266 of them a gap of ten times or more; the median is 1.85. The widest: precious-metal ores exported to Italy at 93,208.42 EUR per kilogram, against 1.76 to China; lactams from Ireland at 22,507.07, against 8.41 from China; motor spirit to Singapore at 912.67, against 0.89 to Angola. Unroasted coffee, over 17 partners: Viet Nam 3.73 against Guatemala 7.02, 1.88 times |
-
-Over the full months of 202601 to 202606, 202605 from the publication of
-2026-09-15 and the rest from that of 2026-10-16, rows per view and month:
-
-| View | 202601 | 202602 | 202603 | 202604 | 202605 | 202606 |
-|---|---:|---:|---:|---:|---:|---:|
-| `vw_partner_ranking` | 9,411 | 9,512 | 9,526 | 9,517 | 9,522 | 9,572 |
-| `vw_trade_balance_by_chapter` | 2,618 | 2,618 | 2,618 | 2,618 | 2,617 | 2,618 |
-| `vw_intra_extra_by_country` | 54 | 54 | 54 | 54 | 54 | 54 |
-| `vw_intra_extra_by_chapter` | 5,184 | 5,184 | 5,201 | 5,199 | 5,193 | 5,194 |
-| `vw_partner_dependence` | 59,731 | 59,816 | 60,207 | 60,067 | 59,926 | 60,077 |
-| `vw_value_per_kg_by_partner` | 898,603 | 918,938 | 933,619 | 925,145 | 913,169 | 930,690 |
-
-The value the views keep, in EUR, over the totals and over the detail:
-
-| Month | Totals | Detail |
-|---|---:|---:|
-| 202601 | 1,035,771,288,823.854 | 1,035,771,351,966.217 |
-| 202602 | 1,084,718,636,909.279 | 1,084,718,698,828.342 |
-| 202603 | 1,255,751,966,698.189 | 1,255,752,033,408.576 |
-| 202604 | 1,198,669,988,829.698 | 1,198,670,054,153.606 |
-| 202605 | 1,156,578,315,179.473 | 1,156,578,379,285.260 |
-| 202606 | 1,259,002,999,612.932 | 1,259,003,067,621.601 |
-
-- **202605 keeps every row and value of the run of 202605 alone.** A month
-  loaded next to it changes only the rank of the month before in question 1,
-  never which rows a view holds.
-- The answers are those of 202606, the latest month loaded: 162, 27, 27, 97,
-  162 and 2,854 rows. With 202607 loaded, they are those of July: 162, 27, 27,
-  97, 162 and 2,749 rows, the ones the README reports in Results.
-
-### Detail against totals
-
-Per reporter, trade type, flow, procedure and file, summed over every partner
-and product:
-
-| File | Groups | Gap other than 0 | Beyond 0.01 M EUR | Sum of the gaps, EUR |
-|---|---:|---:|---:|---:|
-| `full_v2_202601.csv` | 239 | 109 | 2 | 63,142.363 |
-| `full_v2_202602.csv` | 240 | 107 | 2 | 61,919.063 |
-| `full_v2_202603.csv` | 242 | 105 | 2 | 66,710.387 |
-| `full_v2_202604.csv` | 240 | 107 | 2 | 65,323.908 |
-| `full_v2_202605.csv` | 239 | 106 | 2 | 64,105.787 |
-| `full_v2_202606.csv` | 241 | 103 | 2 | 68,008.669 |
-| `full_v2_202605.csv`, 2026-10-16 | 239 | 104 | 2 | 64,163.133 |
-| `full_v2_202607.csv`, 2026-10-16 | 240 | 106 | 2 | 66,547.619 |
-
-- **In the full month the largest gap is 25,139 EUR**, France's intra-EU
-  exports. It is not a rounding of conversions. The six reporters outside the
-  euro area add up to 51.787 EUR, with at most 30.606 EUR in one group. Ten
-  euro-area reporters hold 64,054 EUR, in whole euros, with the detail always
-  above the totals: France 38,813, Belgium 10,518, Spain 7,399, Slovenia 2,017,
-  Portugal 1,365, Ireland 1,270, Estonia 1,132, Luxembourg 761, Bulgaria 753
-  and Italy 26. No documented cause explains it. The manual never mentions
-  rounding, and says of `TOTAL` only that it is the one aggregate the bulk
-  files precalculate (p. 83). The one exception it describes, confidential
-  trade allocated to no chapter but kept in the country's total (p. 42), would
-  put the totals above the detail, not below.
-- **The same two groups pass the tolerance in every full month**, and no other
-  does: France's intra-EU imports, 12,381 to 15,452 EUR above the totals, and
-  exports, 24,144 to 26,751, in each of 202601 to 202607, over two
-  publications. The gap is systematic, not a one-off of 202605. The sums in the
-  table were counted from the CSV files with pandas, on the publication of
-  2026-09-15 for the first row of 202605, and of 2026-10-16 for the other
-  months. The last two rows, both of 2026-10-16, come from the gold facts
-  through `sql/results_queries.sql`, which gives the five rows of 202601 to
-  202604 and 202606 to the thousandth of a euro.
-
-### The checks of gold
-
-The checks of gold write to `ops.dq_check_results` with `layer` gold, and are
-compared with their expectations by the rule of the silver checks, through the
-same `mismatches()` (Silver, The checks). A check of a fact writes one row per
-fact and source file. A check of a dimension reads every version of the table,
-whatever file its facts came from, and writes one row per dimension, with
-`source_file` NULL.
-
-Expected failures: the rule of every month, `EXPECTED` in `src/gold_checks.py`,
-and 0 for any check it does not name.
-
-| Check | Rule | Reads | Expected |
-|---|---|---|---:|
-| `01_rows_match_silver` | Per file, as many fact rows as silver rows. Counts the rows apart | each fact and its silver table | 0 |
-| `03_one_match_per_dimension` | Each fact row finds exactly one row in each of its dimensions: the reporter and the partner in `dim_country`, the product, the flow, the procedure and the month | each fact and its dimensions | 0 |
-| `04_value_matches_silver` | Per file, the `value_eur` of the fact adds up to silver's. Counts the one sum | each fact and its silver table | 0 |
-| `05_dimension_key_unique` | No two rows share the surrogate key or `(code, valid_from)`; in `dim_flow`, `dim_stat_procedure` and `dim_period`, the code | the five dimensions | 0 |
-| `06_no_overlapping_versions` | No version of a code starts before the one before it ends | `dim_country`, `dim_product` | 0 |
-| `07_detail_matches_totals` | Per reporter, trade type, flow, procedure and file, summed over every partner and product, the detail within 0.01 M EUR of the totals | both facts | 2 |
-| `08_version_covers_month` | The version each key of a fact row points to, reporter, partner and product, covers the row's `period_date`. Reads every month of the facts | each fact, `dim_period` and its versioned dimensions | 0 |
-
-- **Check 03 is the strict form of "the star keeps the rows".** Counted row by
-  row, a row the star loses and another it counts twice cannot cancel out, as
-  they could in a total. A key the fact could not resolve to a version is
-  NULL and finds no row, and it overlaps check 05 on purpose: a repeated key
-  finds two. Number 02 is not reused: a check of its own for NULL keys
-  repeated this one.
-- **Checks 05 and 06 read the dimension tables as merged**, with every version
-  an earlier MERGE left, since a version missing from the source is kept
-  (Dimensions with history). Built from the code lists, versions run
-  between consecutive dates and cannot overlap. In the table they can: a row
-  of a code list that changed its start would be inserted as a new version
-  next to the old one, and check 06 counts the old one.
-- **Check 07 compares the detail with the totals of each group**, over every
-  partner and product. In the full month of 202605 the two groups beyond 0.01 M
-  EUR are France's intra-EU exports and imports, 25,139 and 13,508 EUR above
-  the totals, and they are the two it finds in every month (Detail against
-  totals).
-- **Check 08 reads every month of the facts**, not only the files of the run,
-  and writes a row per fact and file. A run builds the facts of its pending
-  months against the dimensions as merged then, and leaves the other months as
-  they were: a later `MERGE` that starts a version later, or ends it earlier,
-  leaves their rows pointing to a version that no longer covers their month,
-  with the key still found, so check 03 passes. A key without a version counts
-  here too.
-- **An expectation names a check**, as in silver, and holds for every file and
-  table the check reads. A check of a dimension writes its result without a
-  file, and expects 0.
-- No check starts a Python worker: every rule is a column expression.
-
-#### What the checks found
-
-On the full month of 202605 as published on 2026-09-15, every check of gold
-found exactly its expected failures: 16 results, 1 with failures.
-
-| Check | Full month of 202605 |
-|---|---:|
-| `01` and `03` | 0 of 4,975,304 detail rows and of 12,709 totals rows |
-| `04` | 0 of 1 sum per fact |
-| `05` | 0 of 390, 30,985, 2, 7 and 1 rows |
-| `06` | 0 of 390 and 30,985 versions |
-| `07` | 2 of 239 groups |
-
-- Over the full months of 202601 to 202606, 61 results, 6 with failures, every
-  one as expected: check 07 found France's two groups in each month, over 239
-  to 242 groups, and the other checks nothing.
-- In the incremental run, check 07 found France's two groups again in 202605 as
-  republished, of 239, and in 202607, of 240; check 08 found nothing in any
-  month, over the six and then the seven.
-- With the expectations of check 07 and of check 06 changed, a run wrote its
-  results and stopped naming both: the file for check 07, and the two versioned
-  dimensions, without a file, for check 06.
+</details>
 
 ## Dimensions with history (SCD type 2)
 
@@ -879,7 +447,7 @@ day. Germany's two rows there, up to 1990 and from 1991, stay two versions.
   Bulgaria's version of 2026 moves 358 of the 389 keys of 2025-12-31, and the
   facts already written would point to other countries. No key collides.
 - Gold check 03 finds every fact row of the seven months joined to exactly one
-  version of each dimension (The checks of gold).
+  version of each dimension (Quality checks).
 
 </details>
 
@@ -914,61 +482,286 @@ month already loaded keeps its version. The dimension as it stood on
 
 </details>
 
+## The business questions
+
+<details open>
+<summary><b>Six views over the star answer the five questions, and a notebook
+task creates them, since a SQL task would need the SQL warehouse.</b> The
+notebook stops unless each view keeps the value of every fact row it
+reads.</summary>
+
+`sql/gold_views.sql` holds the views, and `sql/analysis_queries.sql` one query
+per question that states the answer for the latest month loaded.
+`notebooks/06_gold_views.py` runs both on the serverless compute of the Job,
+where a SQL task would need the SQL warehouse, the most expensive compute
+measured on Free Edition; the tests create the same views over test data. The
+answers of July 2026 are in the README's [Results](../README.md#results), and
+the counts behind them in `sql/results_queries.sql`, which no notebook runs.
+
+| # | Question | View | Fact | Rule |
+|---|---|---|---|---|
+| 1 | Main partners, and how the ranking changed | `vw_partner_ranking` | Totals | The partners that are a country, ranked each month next to their rank the month before. The Q codes count in the flow's total |
+| 2 | Products behind a surplus or a deficit | `vw_trade_balance_by_chapter` | Detail | Exports minus imports by reporter and chapter, with the chapter's section |
+| 3 | Intra-EU against extra-EU | `vw_intra_extra_by_country`, `vw_intra_extra_by_chapter` | Totals by country, detail by chapter | By `trade_type`, which survives confidentiality: QY is intra-EU and QZ extra-EU |
+| 4 | Dependence on a single partner | `vw_partner_dependence` | Detail | By reporter, heading and flow, the share of the largest partner that is a country, over the whole flow with the Q codes, and the share under Q next to it. The answer reads the headings of at least 1% of the reporter's flow |
+| 5 | Value per kilogram across partners | `vw_value_per_kg_by_partner` | Detail | Eight-digit codes, a partner that is a country, a value and a weight, over every reporter. The answer compares the partners of at least 10 M EUR in the month |
+
+- **Question 2 is asked by chapter**, with its section next to it: the
+  balance of a section can hide chapters that offset each other.
+- **Question 4 is asked by product, not by reporter.** The Netherlands hold
+  14.5% of Germany's imports, and China 44.0% of its batteries (8507). An X
+  code of a chapter reaches no heading and stays out: 32,182.3 M EUR, 2.63% of
+  the detail of July 2026. Without the floor of 1%, 3,195 of the 59,883
+  headings have a single partner; a floor in euros would follow the size of
+  the reporter.
+- **Question 5 compares the partners of the EU as a whole**, so cheese, wine
+  and cars compare across European partners too. It keeps 4,670,839 of the
+  4,958,874 rows of eight-digit codes of July 2026, 94.19%, with 97.90% of
+  their value. Below 10 M EUR a few kilograms put noise at the top.
+
+<details>
+<summary>Six rules of the SQL, each of which would change an answer if it
+were written otherwise.</summary>
+
+- **`RANK()`, so tied values share a rank**: 29 rows of July 2026. The 156
+  rows of Q codes take no rank.
+- **The rank of the month before is the calendar month's**, joined on
+  `ADD_MONTHS(period_date, -1)`, and NULL where that month is not loaded or
+  the partner had no trade in it. `LAG` would take the latest month the
+  partner traded in, however far back.
+- **The largest partner of a heading is a country with a value**, and tied
+  values name the lower code, in 21 headings of July 2026. None is named
+  where every partner is a Q code, in 49, or where the heading has no value,
+  in 12.
+- **A sum of sums is `DECIMAL(38,3)`, which Spark divides to 6 decimals**, so
+  a heading at 0.99996% of its flow would read 0.010000 and pass the floor.
+  The view casts its sums back to `DECIMAL(28,3)`, whose quotients keep 10;
+  no heading of July 2026 falls in that band. The test of Austria's share of
+  its flow found it: 0.167306 at 6 decimals, 4.6e-7 off the exact share.
+- **The value per kilogram divides the sums**, and never averages the ratios
+  of the rows. Every ratio goes through `try_divide`: in ANSI mode a division
+  by zero stops the query.
+- **A count over a threshold is made on the quotient**, which the answer
+  orders on and shows to 2 decimals: in July 2026, 1,260 products and flows
+  have a dearest partner at twice the cheapest or more, and 1,266 on the gap
+  shown, where six quotients of 1.997 to 1.999 read 2.00.
+
+The views name their tables without a schema, and the notebook sets the gold
+schema with `USE` first. The floors of questions 4 and 5 live in their
+queries, so the views keep every heading and every partner.
+
+</details>
+
+<details>
+<summary>The notebook writes each view's fact rows again, apart from the view,
+and compares the two in every month: in July 2026 the six views keep every
+euro of the rows they read.</summary>
+
+`src/gold_views.py` holds the rows each view reads, so a view that loses,
+adds or splits rows, or repeats a value of its grain, stops the notebook even
+where it reads part of its fact. The views read every month and write
+nothing. In July 2026 the views over the totals keep 1,224,894,873,220.229
+EUR, those over the whole detail 1,224,894,939,767.848, question 4
+1,192,712,668,368.800, the detail without the X codes of a chapter, and
+question 5 1,164,149,183,748.356. The six views hold 9,566, 2,618, 54, 5,194,
+59,883 and 923,569 rows.
+
+</details>
+
+</details>
+
+## Quality checks
+
+<details open>
+<summary><b>20 checks, 13 on silver and 7 on gold, expect the same rule in
+every month, and a result off its expectation in either direction stops the
+run.</b> In each of the seven months, silver 06a found 5.3% to 5.6% of the
+rows by product and gold 07 two groups, and every other check 0.</summary>
+
+The checks live in `src/silver_checks.py` and `src/gold_checks.py`, and
+notebooks 03 and 05 run them. Each writes one row per table it reads and per
+source file into `ops.dq_check_results`, in a schema apart from the data
+([data dictionary](data_dictionary.md#opsdq_check_results)); a check of a gold
+dimension writes one, without a file. With one month pending, a run writes 20
+results of silver and 28 of gold, 14 of them from gold 08, which reads every
+month.
+
+**Every month expects the same rule**, whatever its publication: `EXPECTED`
+in each module names the checks expected to find something, as a count, a
+share of the rows read or NULL for not evaluated, and every other check
+expects 0. A share becomes a range of rows, rounded inward, so a month new to
+the pipeline, or republished with other counts, needs nothing declared. The
+notebook appends its results, reads back those of its batch, and stops on a
+count off its expectation, up or down, outside its range, or NULL against a
+number. A file a check returns nothing for fails an expectation of 0.
+
+| Silver check | Rule | Reads | Expected |
+|---|---|---|---:|
+| `01_country_valid` | `reporter` and `partner` have a row of `PARTNERS_ISO.txt` valid on `period_date` | both tables | 0 |
+| `02_product_valid` | `product_nc` is eight digits valid in `CN.txt` on `period_date`, or an X code of chapter, HS4 or HS6 | detail | 0 |
+| `03_codes_in_domain` | `flow` in (1, 2); `trade_type` in (I, E); `stat_procedure` valid in `STATISTICAL_PROCEDURES.txt` | both tables | 0 |
+| `04_period_matches_file` | `period` is the month in the file name | both tables | 0 |
+| `05_values_not_negative` | `value_eur` and `value_nac` are not negative | both tables | 0 |
+| `06a_kg_zero_with_value` | `quantity_kg` is 0 with a positive `value_eur`: counted, not dropped | detail | 5.0% to 6.0% of the rows |
+| `08b_total_row_shape` | Every `TOTAL` row reads `TOTAL`, `TO`, `NO_SU` and 0 | bronze | 0 |
+| `09_no_duplicate_on_grain` | No duplicate on the grain | both tables | 0 |
+| `10_totals_match_published` | Totals by `trade_type` and `flow` against EU27_2020 and EXT_EU27_2020, and GB against UK, within 0.05 M EUR of the figures of the same publication | totals | 0 of 6, or not evaluated without a copy |
+| `11_trade_type_matches_eu` | `trade_type` is I exactly when the partner belongs to zone 1010 of `GEOZONES-PARTNERS_ISO.txt` on `period_date` | both tables | 0 |
+| `12a_cast_lossless` | Every value cast to its silver type equals the same value cast without loss, and is a number | bronze | 0 |
+| `12b_null_only_from_sentinel` | No NULL except in `suppl_unit` and its quantity together, from `NO_SU`, and in `hs4` and `hs6` below the level of an X code | both tables | 0 |
+| `12c_no_su_quantity_zero` | `NO_SU` always with a quantity of 0, which silver turns to NULL | bronze | 0 |
+
+| Gold check | Rule | Reads | Expected |
+|---|---|---|---:|
+| `01_rows_match_silver` | Per file, as many fact rows as silver rows | each fact and its silver table | 0 |
+| `03_one_match_per_dimension` | Each fact row finds exactly one row in each of its dimensions | each fact and its dimensions | 0 |
+| `04_value_matches_silver` | Per file, the `value_eur` of the fact adds up to silver's | each fact and its silver table | 0 |
+| `05_dimension_key_unique` | No two rows share the surrogate key or `(code, valid_from)`; in the three small dimensions, the code | the five dimensions | 0 |
+| `06_no_overlapping_versions` | No version of a code starts before the one before it ends | `dim_country`, `dim_product` | 0 |
+| `07_detail_matches_totals` | Per reporter, trade type, flow, procedure and file, the detail within 0.01 M EUR of the totals | both facts | 2 |
+| `08_version_covers_month` | The version each key of a fact row points to covers the row's `period_date`, in every month of the facts | each fact, `dim_period` and its versioned dimensions | 0 |
+
+The seven full months, all from the publication of 2026-10-16:
+
+| Month | Rows by product | `06a` | Gold `07` | Detail less totals, EUR |
+|---|---:|---:|---:|---:|
+| 202601 | 4,865,450 | 271,808 | 2 of 239 | 63,142.363 |
+| 202602 | 4,988,110 | 271,767 | 2 of 240 | 61,919.063 |
+| 202603 | 5,136,739 | 272,844 | 2 of 242 | 66,710.387 |
+| 202604 | 5,064,050 | 272,068 | 2 of 240 | 65,323.908 |
+| 202605 | 4,981,646 | 274,225 | 2 of 239 | 64,163.133 |
+| 202606 | 5,090,991 | 281,201 | 2 of 241 | 68,008.669 |
+| 202607 | 5,037,372 | 283,190 | 2 of 240 | 66,547.619 |
+
+**A check off by one row stops the run.** With the expectation of 06a moved
+one row off, up and then down, each run wrote its results and stopped, naming
+the check, the table, the file and both counts.
+
+<details>
+<summary>Why each check reads what it reads, and what its expectation
+allows.</summary>
+
+- **06a expects 5.0% to 6.0%**, a margin around the 5.312% to 5.586% of the
+  six months it was set on; 202607 then found 5.622%.
+- **10 reads a copy of the published figures saved with its file** (Landing
+  and the manifest), never the live table, which is revised with the files
+  (The source). Without a copy the file is not evaluated. Over the seven
+  months the largest gap is 0.048 M EUR.
+- **08b, 12a and 12c read bronze**, where the columns are still as landed:
+  the `TOTAL` rows before the split, each value as text, so that one that is
+  not a number counts instead of stopping the run, and the 0 of `NO_SU`.
+- **Gold 03 is the strict form of "the star keeps the rows"**: counted row by
+  row, a row lost and another counted twice cannot cancel out. An unresolved
+  key finds no row, and a repeated key two.
+- **Gold 05 and 06 read the dimensions as merged**, with every version an
+  earlier MERGE left (Dimensions with history): a code list row that changed
+  its start would be inserted next to the old version, which 06 counts.
+- **Gold 08 reads every month of the facts**: a later MERGE that moves a
+  version's dates leaves older rows pointing to a version that no longer
+  covers their month, with the key still found (The incremental run).
+- **The numbers of the checks retired are not reused**: silver 06b, 07 and
+  08a and gold 02, which described columns no question reads or repeated
+  another check. A `check_name` keeps one meaning across runs.
+- **No check starts a Python worker.** The code lists are read as text and
+  split on the tab, since 5,078 lines of `CN.txt` hold a double quote, and
+  every rule is a column expression.
+
+</details>
+
+<details>
+<summary>The rows by product exceed the <code>TOTAL</code> rows by 61,919 to
+68,009 EUR a month, and only France's intra-EU trade passes the tolerance of
+gold 07, with no documented cause.</summary>
+
+Per reporter, trade type, flow and procedure, summed over every partner and
+product, the detail is above the totals in France's intra-EU imports by
+12,381 to 15,452 EUR, and in its exports by 24,144 to 26,751, in each of the
+seven months; no other group passes 0.01 M EUR. The manual never mentions
+rounding, and says of `TOTAL` only that it is the one aggregate the bulk
+files precalculate (p. 83). The one exception it describes, confidential
+trade kept in a country's total but allocated to no chapter (p. 42), would
+put the totals above the detail. The sums come from the gold facts through
+`sql/results_queries.sql`.
+
+</details>
+
+</details>
+
 ## The incremental run
 
-The notebooks process the months of the window that are **pending**: landed
-from a publication the pipeline has not processed. `ops.etl_watermark`
-records, per file, the publication it processed:
+<details open>
+<summary><b>A month is pending when the Volume's manifest dates its archive
+otherwise than the watermark, and a run writes only the pending
+months.</b> 202605, republished, and 202607, new, were each pending in their
+run, and the other five months were not written again.</summary>
 
-| Column | Holds |
-|---|---|
-| `source_file` | The landed CSV |
-| `period` | Its month |
-| `published_at`, `archive_bytes` | The publication of its archive, as the Volume's manifest recorded it (Landing and the manifest) |
-| `batch_id`, `processed_at` | The run of the gold checks that passed on it |
+`ops.etl_watermark` records, per file, the publication the pipeline processed
+([data dictionary](data_dictionary.md#opsetl_watermark)). `src/watermark.py`
+compares it with the Volume's manifest, which the landing writes (Landing and
+the manifest), for the months of the window. The rows behind two runs, one
+with 202605 republished and one with 202607 new:
 
-A month is pending when the manifest dates its archive differently from the
-watermark, or the watermark does not hold its file: a month new to the
-pipeline, or one republished since it was processed. `src/watermark.py` works
-it out from the manifest, the watermark and the window of the run (The window
-of a run), and each notebook from 01 to 05 asks it before writing anything and
-processes the pending months only: bronze, silver and both facts replace those
-months whole, and the checks read their files. A month of the window the
-manifest does not name stops the run, since its publication is unknown.
+| Month | Manifest | Watermark at first | Run over 202601 to 202606 | Run over 202601 to 202607 |
+|---|---|---|---|---|
+| 202605 | 46,148,464 bytes, `2026-10-16T10:00:08` | 46,127,843 bytes, `2026-09-15T09:38:30` | Pending: republished. The watermark takes the manifest's row | Not pending |
+| 202606 | 47,304,745 bytes, `2026-10-16T10:00:09` | The same | Not pending | Not pending |
+| 202607 | 46,802,030 bytes, `2026-10-16T10:00:09` | No row | Outside the window | Pending: new. The watermark gains its row |
 
-**The gold checks notebook writes the watermark last**, and only when every
-result of both layers matched its expectation. Until then every notebook finds
-the same pending months, so a run that stops leaves them pending, and the next
-one writes them again in place.
+Each notebook from 01 to 05 asks for the pending months before it writes
+anything: bronze, silver and both facts replace those months whole, and the
+checks read their files. A month of the window the manifest does not name
+stops the run, since its publication is unknown. **The gold checks notebook
+writes the watermark last**, and only when every result of both layers
+matched its expectation, so a run that stops leaves its months pending, and
+the next one writes them again in place. With nothing pending, each notebook
+says so and ends its task with success through `dbutils.notebook.exit()`.
+The views notebook reads every month and no watermark. Gold check 08 belongs
+here: the facts of the months not processed were built against an earlier
+MERGE (Quality checks).
 
-With nothing pending, each notebook says so and calls
-`dbutils.notebook.exit()`, which ends its task with success. The views notebook
-does not read the watermark: it creates its views over every month.
-`dbutils.notebook.exit()` ends a Run all at the cell that calls it. That cell
-shows only `Notebook exited:` and the message, not what it printed before it,
-and every later cell is marked skipped while it still shows its output of the
-run before. A skipped cell is read by its mark, not by its output.
+<details>
+<summary>The window runs from <code>start_period</code> to
+<code>end_period</code>, and with <code>end_period</code> empty the landing
+stops at the month before the last one listed.</summary>
 
-Check 08 of gold belongs to the incremental run: it reads every month of the
-facts, since those of the months not processed were built against an earlier
-`MERGE` (The checks of gold).
+A run takes its months from two job parameters, `start_period`, `202601` by
+default, and `end_period`, empty, as `YYYYMM` (The Job). They reach notebooks
+00 to 05 as widgets of the same names, created in a cell of their own,
+`Run settings`, right after the imports, because Databricks never shows a
+widget created by a command that fails. `config.window_from()` reads them,
+and stops the run on a value that is not a month, naming its parameter, or on
+a window that ends before it starts.
 
-Three runs over the full months on serverless, from the six of 202601 to
-202606 with 202605 in its publication of 2026-09-15:
-
-| Run | Months | Result |
+| Notebooks | Window | With `end_period` empty |
 |---|---|---|
-| Republished | 202601 to 202606, the Volume holding 202605 of 2026-10-16 | Pending: 202605. Bronze replaced its 4,988,013 rows of 2026-09-15 with the 4,994,361 of 2026-10-16 in one `WRITE`, 30,203,295 in total; silver and the facts, 4,981,646 and 12,715. Every check as expected, check 10 against the copy of the figures of 2026-10-16, and check 08 over the six months; both `MERGE` at 0 updated and 0 inserted. The watermark changed in 202605 alone. Of the 36 lines of the views, the 30 of the other months stayed identical, byte for byte; those of 202605 moved, the total of its trade by 294.2 M EUR |
-| New month | 202601 to 202607 | Pending: 202607. 5,050,155 rows in bronze, 35,253,450 in total; 5,037,372 and 12,783 in silver and the facts, 7 rows in `dim_period`. Every check as expected; the watermark, 7 rows. The views, 42 lines, the 36 of the run before unchanged |
-| Nothing pending | The same | Notebooks 01 to 05 end without writing. No table gains a version: the last commit of each of the twelve tables they write is the one of the run before |
+| `00_land` | The months of the listing, from `start_period` to `end_period` | To the month before the last one listed (The source) |
+| `01` to `05` | The months of the Volume's manifest, from `start_period` to `end_period` | To the last month the manifest names |
 
-Each count of the two files was compared with a count made first without
-Spark, with the rules of the checks, which gave every known number of 202606
-before theirs: 12,715 and 12,783 `TOTAL` rows; 06a 274,225 and 283,190;
-check 10, 0 of 6; and gold 07, France's 2 groups in each.
+`config.months_in_window()` reads the months from the names of the monthly
+archives, `full_v2_YYYYMM.7z`, in the listing and the manifest alike. It
+lives in `config` because importing `land` imports `py7zr`, which only the
+landing task installs. An open window lets a month enter on its own: the next
+release completes the newest month and lists a newer one, and the landing
+lands the first.
+
+</details>
+
+<details>
+<summary>Three runs on serverless over the full months, and one of the Job,
+each wrote what was pending and left the rest as it was.</summary>
+
+| Run | What it wrote |
+|---|---|
+| Republished, 202601 to 202606 | 202605 alone. Bronze replaced its 4,988,013 rows of 2026-09-15 with the 4,994,361 of 2026-10-16 in one write; silver and the facts, 4,981,646 and 12,715. Every check as expected, check 10 against the copy of 2026-10-16, and both MERGE at 0 updated and 0 inserted. Of the 36 lines the views notebook prints, the 30 of the other months stayed identical, byte for byte; those of 202605 moved, the total of its trade by 294.2 M EUR |
+| New month, 202601 to 202607 | 202607 alone: 5,050,155 rows in bronze, 35,253,450 in all, and 5,037,372 and 12,783 in silver and the facts. The views printed 42 lines, the 36 of the run before unchanged |
+| Nothing pending, the same | Nothing: notebooks 01 to 05 ended without writing, and the last commit of each of the twelve tables they write is that of the run before |
 
 The Job of this repository then landed 202607 again from Eurostat and took it
-through every layer, with the same numbers (The Job).
+through every layer, with the same numbers and the same 42 lines (The Job).
+
+</details>
+
+</details>
 
 ## Environment
 
@@ -1044,35 +837,11 @@ merged without one, and the notebook no longer equals the commit. Discard the
 change before pulling; if a pull conflicts, abort it, read the diff, discard
 it and pull again.
 
-#### The window of a run
-
-A run takes its months from two parameters, `start_period` and `end_period`,
-as `YYYYMM`. Notebooks 00 to 05 read them from widgets of those names, created
-in a cell of their own, `Run settings`, right after the imports, because
-Databricks never shows a widget created by a command that fails:
-`start_period` defaults to `202601`, and `end_period` to empty. The views
-notebook creates none, since it reads every month of the facts. A Job fills the
-widgets from job parameters of the same names, which reach every task (The
-Job). `config.window_from()` reads them, and a value that is not a month stops
-the run, naming its parameter; so does a window that ends before it starts.
-
-| Notebooks | Window | With `end_period` empty |
-|---|---|---|
-| `00_land` | The months of the listing, from `start_period` to `end_period` | To the month before the last one listed (The source) |
-| `01` to `05` | The months of the Volume's manifest, from `start_period` to `end_period` | To the last month the manifest names |
-
-`config.months_in_window()` reads the months from the names of the monthly
-archives, `full_v2_YYYYMM.7z`, and skips the yearly ones and every other file
-of the folder. The same function reads the listing and the manifest. It lives
-in `config`, not in `land`, because importing `land` imports `py7zr`, which
-only the landing task installs. A window that holds no month stops the landing
-before any download.
-
-Each notebook prints its window, as `Window: from 202601 to the month before
-the last one listed`, so a run says which months it took. An open window lets
-a month enter on its own: the next release of Eurostat completes the month
-that was the newest, the listing gains a newer one, and the landing lands the
-first.
+`dbutils.notebook.exit()` ends a Run all at the cell that calls it. That
+cell shows only `Notebook exited:` and the message, not what it printed
+before it, and every later cell is marked skipped while it still shows its
+output of the run before. A skipped cell is read by its mark, not by its
+output.
 
 #### Silver, gold and the views on serverless
 
@@ -1107,7 +876,7 @@ published on 2026-09-15, into empty schemas:
 | Silver | 4,975,304 in `trade_detail` and 12,709 in `trade_totals` |
 | Silver checks | Each with its expected failures, 06a within its range. Check 10 compared the six figures of the copy landed with the file |
 | Gold | `dim_country` 390 versions and `dim_product` 30,985, inserted into the empty tables; 2, 7 and 1 in the small dimensions; the facts, 4,975,304 and 12,709 |
-| Gold checks | 16 results, 1 with failures: check 07, 2 of 239 groups |
+| Gold checks | Each with its expected failures: check 07, 2 of 239 groups |
 | Views | The six lines of rows and value per view, and the answers. Read from the default schema, `eu_trade.gold.vw_partner_ranking` returns its 9,522 rows |
 
 Over the six full months of 202601 to 202606, 202605 from the publication of
@@ -1120,7 +889,7 @@ copy of the published figures of each month in the Volume:
 | Silver | 30,120,644 in `trade_detail` and 76,303 in `trade_totals` |
 | Silver checks | Each with its expected failures, 06a within its range in each month |
 | Gold | `dim_country` 390 versions and `dim_product` 30,985, inserted into the empty tables; 2, 7 and 6 in the small dimensions; the facts, as silver |
-| Gold checks | 61 results, 6 with failures: check 07, 2 groups in each month |
+| Gold checks | Each with its expected failures: check 07, 2 groups in each month |
 | Views | The 36 lines of rows and value per view and month that the notebook prints, and the answers of 202606 |
 
 #### The Job
@@ -1134,7 +903,7 @@ Edition is never reached.
 | Setting | Value | Why |
 |---|---|---|
 | Source | `git_source`: the branch `main` of the GitHub repository, every task with `source: GIT` | Each run takes a snapshot of the branch and records its commit on every task. No Git folder has to be pulled first |
-| Parameters | `start_period`, `202601`, and `end_period`, empty | A job parameter reaches every task as the widget of the same name (The window of a run). Run now with different parameters changes them for one run |
+| Parameters | `start_period`, `202601`, and `end_period`, empty | A job parameter reaches every task as the widget of the same name (The incremental run). Run now with different parameters changes them for one run |
 | Environment | `land`: environment version 6 with `py7zr==1.1.4`, the version of the lock, for the task `land` only | A serverless notebook task can take an environment of the Job. The other tasks run on the environment of their notebook's header, and none of them needs `py7zr` |
 | Compute | None declared | Serverless |
 | Performance | `performance_target: STANDARD` | The same SKU as performance optimized: fewer DBU, a longer start |
@@ -1168,7 +937,7 @@ Two runs over the seven full months of 202601 to 202607:
 
 | Run | Result |
 |---|---|
-| `end_period` 202607, with the CSV of 202607 deleted from the Volume and its row from the watermark | The seven tasks succeeded in 13 minutes. The landing landed 202607 again from Eurostat (Landing and the manifest), and the notebooks took it as pending: 5,050,155 rows in bronze and 35,253,450 in total; 5,037,372 and 12,783 in silver and the facts; 26 silver results, 06a at 283,190 and check 10 at 0 of 6; both `MERGE` at 0 updated and 0 inserted, and 7 rows in `dim_period`; 30 gold results, check 07 at 2 of 240 groups and check 08 over the seven months; the watermark back at 7 rows. The 42 lines of the views identical, byte for byte, to those of the incremental run, and the answers with 162, 27, 27, 97, 162 and 2,749 rows |
+| `end_period` 202607, with the CSV of 202607 deleted from the Volume and its row from the watermark | The seven tasks succeeded in 13 minutes. The landing landed 202607 again from Eurostat (Landing and the manifest), and the notebooks took it as pending: 5,050,155 rows in bronze and 35,253,450 in total; 5,037,372 and 12,783 in silver and the facts; every silver check as expected, 06a at 283,190 and check 10 at 0 of 6; both `MERGE` at 0 updated and 0 inserted, and 7 rows in `dim_period`; every gold check as expected, check 07 at 2 of 240 groups and check 08 over the seven months; the watermark back at 7 rows. The 42 lines of the views identical, byte for byte, to those of the incremental run, and the answers with 162, 27, 27, 97, 162 and 2,749 rows |
 | The defaults | The seven tasks succeeded in 8 minutes. The landing left 202608 out and landed nothing; notebooks 01 to 05 took their window to the last month landed and found nothing pending, in 10 to 17 seconds each; the views printed the same 42 lines, byte for byte |
 
 What runs from a remote repository as from a Git folder:

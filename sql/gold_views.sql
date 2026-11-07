@@ -5,7 +5,7 @@
 -- the schema it was created in. Every ratio goes through try_divide: Spark
 -- runs in ANSI mode, where a division by zero stops the query. The rules, and
 -- what each view returned on the landed files, are in
--- docs/engineering-notes.md, section Gold.
+-- docs/engineering-notes.md, section The business questions.
 
 -- Question 1: the main partners of each reporter, and how the ranking changed.
 -- From the TOTAL rows, which name the real partner: one row per month,

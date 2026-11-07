@@ -10,9 +10,9 @@ the count is depends on the check: a row of the table it reads, the sum of a
 file for check 04, a group of rows for check 07.
 
 The rules, and the measurements behind each expected failure, are in
-docs/engineering-notes.md, section Gold, The checks of gold. The results are
-compared with their expectations by silver_checks.mismatches(), the rule of the
-silver checks. No check starts a Python worker: every rule is a Column. As in
+docs/engineering-notes.md, section Quality checks. The results are compared
+with their expectations by silver_checks.mismatches(), the rule of the silver
+checks. No check starts a Python worker: every rule is a Column. As in
 silver, the number of a check retired is not reused.
 """
 

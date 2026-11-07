@@ -3,7 +3,7 @@
 sql/gold_views.sql holds one view per question over the gold star schema, and
 sql/analysis_queries.sql the queries that state each answer from them. The
 rules, and what each view returned on the landed files, are in
-docs/engineering-notes.md, section Gold.
+docs/engineering-notes.md, section The business questions.
 
 The SQL names the facts and the dimensions without a schema. The notebook sets
 the gold schema before it creates the views, and a view resolves its tables in

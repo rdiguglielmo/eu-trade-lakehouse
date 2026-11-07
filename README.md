@@ -292,8 +292,8 @@ down, the run wrote its results and stopped, naming the check, the table, the fi
 The checks of the notebooks themselves come on top: bronze counts each file's lines without the
 CSV parser, silver accounts for every bronze row, gold for every silver row, and the views for the
 value of every fact row they read ([Pipeline Steps](#pipeline-steps)). The rule, the reasoning and
-the measured result of each check are in the notes, [silver](docs/engineering-notes.md#the-checks)
-and [gold](docs/engineering-notes.md#the-checks-of-gold).
+the measured result of each check are in the notes,
+[Quality checks](docs/engineering-notes.md#quality-checks).
 
 ## Incremental Load
 
@@ -333,7 +333,7 @@ run of the new month, byte for byte ([The Job](docs/engineering-notes.md#the-job
 before the last one listed, since the newest month lacks most of its intra-EU trade
 ([Dataset](#dataset)), and lands that month with the next release, once complete. The notebooks
 take their months from the Volume's manifest, which therefore never holds the incomplete one
-([The window of a run](docs/engineering-notes.md#the-window-of-a-run)). A run with the defaults
+([The incremental run](docs/engineering-notes.md#the-incremental-run)). A run with the defaults
 over the seven months left 202608 out, found nothing pending, and printed the same 42 lines.
 
 **The schedule is paused.** The definition of the Job runs it monthly, on the 20th at 06:00
