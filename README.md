@@ -1,69 +1,62 @@
 # EU Trade Lakehouse
 
-Medallion lakehouse over Eurostat COMEXT detailed international trade data, built in PySpark on
-Databricks.
-
+[![CI](https://github.com/rdiguglielmo/eu-trade-lakehouse/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/rdiguglielmo/eu-trade-lakehouse/actions/workflows/ci.yml)
 **Python** · **PySpark** · **Delta Lake** · **Databricks** · **SQL**
 
-Seven months of 2026, 35,253,450 rows, go through bronze, silver and gold written by hand in
-PySpark. One Databricks Job lands each month from Eurostat and takes it to the views of five
-business questions, and a watermark notices when Eurostat republishes a month under the same file
-name. 20 quality checks declare the failures they expect, and a result off its expectation stops
-the run.
+Medallion lakehouse over Eurostat COMEXT detailed trade data, built in PySpark on Databricks:
+seven months of 2026, 35,253,450 rows, through bronze, silver and gold written by hand. One Job
+lands each month from Eurostat and takes it to the views of five business questions; a watermark
+notices when Eurostat republishes a month, and 20 quality checks declare the failures they expect.
+
+## What This Project Shows
+
+| Technique | How | Where to look |
+|---|---|---|
+| Medallion layers written by hand | Bronze a faithful copy as text, silver typed with the `TOTAL` rows apart, gold a star schema of 2 facts and 5 dimensions, in PySpark and without dbt | [`src/`](src/), and the notes from [Bronze](docs/engineering-notes.md#bronze) to [Gold](docs/engineering-notes.md#gold) |
+| Incremental load by publication | A watermark records, per file, the Eurostat publication processed: a month new or republished under the same name is pending, and `replaceWhere` rewrites it in place | [`src/watermark.py`](src/watermark.py), [Incremental Load](#incremental-load) |
+| Slowly changing dimensions, type 2 | `dim_country` and `dim_product` keep one row per version of a code, loaded by a MERGE written by hand, and a fact row joins the version valid in its month | [`src/gold.py`](src/gold.py), [Dimensions with history (SCD type 2)](docs/engineering-notes.md#dimensions-with-history-scd-type-2) |
+| Data quality with expected failures | 20 checks declare the failures they expect and write their results to `ops`; a result off its expectation, in either direction, stops the run | [`src/silver_checks.py`](src/silver_checks.py), [`src/gold_checks.py`](src/gold_checks.py), [Quality checks](docs/engineering-notes.md#quality-checks) |
+| Reconciliation with published figures | Each month's totals within 0.05 M EUR of the figures Eurostat publishes, from a copy saved with the files of the same publication | [The source](docs/engineering-notes.md#the-source) |
+| Orchestration from the repository | One Databricks Job of seven tasks, from Eurostat to the views, read from the branch `main` and created from a JSON definition | [`jobs/trade_pipeline_job.json`](jobs/trade_pipeline_job.json), [The Job](docs/engineering-notes.md#the-job) |
+| CI | ruff, mypy and 245 tests, 130 of them on a local Spark with Delta over real rows of the landed files, on every push | [`ci.yml`](.github/workflows/ci.yml), [Tests and lint](docs/development.md#tests-and-lint) |
 
 ## Business Questions
 
 Five questions about the trade of the 27 member states, each answered by one view over the star
 schema and one query in [`sql/analysis_queries.sql`](sql/analysis_queries.sql):
 
-1. **Main partners.** Who are each reporter's main partners, and how did the ranking change over
-   the months loaded?
+1. **Main partners.** Who are each reporter's main partners, and how did the ranking change?
 2. **Surplus and deficit.** Which products explain each reporter's surplus or deficit?
-3. **Intra-EU against extra-EU.** How does trade within the EU compare with trade outside it, by
-   country and by product?
+3. **Intra-EU against extra-EU.** How does trade within the EU compare with trade outside it?
 4. **Dependence.** Which flows depend most on a single partner?
-5. **Value per kilogram.** Where does the value per kilogram of the same product diverge between
-   partners, and what can explain it?
+5. **Value per kilogram.** Where does the value per kilogram of the same product diverge?
 
-The last two do not come from grouping and summing. Question 4 is a supply-chain risk, and it is
-asked by product heading because a dependence is invisible in a reporter's whole flow: Germany's
-largest import partner holds 14.5% of its imports, while China holds 44.0% of its imports of
-batteries. Question 5 looks for price anomalies, and divides sums instead of averaging ratios. The
-answers for July 2026 are in [Results](#results).
+Question 4 is asked by product heading: Germany's largest import partner holds 14.5% of its
+imports, while China holds 44.0% of its imports of batteries. Question 5 divides sums instead of
+averaging ratios. The answers for July 2026 are in [Results](#results).
 
 ## Dataset
 
 **Eurostat COMEXT, international trade in goods, detailed data by CN8**, from the
 [bulk download facility](https://ec.europa.eu/eurostat/api/dissemination/files/?dir=comext%2FCOMEXT_DATA%2FPRODUCTS):
-one 7z archive per month, 45 to 48 MB, holding one comma-separated file of 18 columns, 400 to 423 MB
-extracted. The SDMX API does not serve this dataset. Loaded here: the seven full months of January
-to July 2026, from the publication of 2026-10-16, 4,877,993 to 5,149,512 rows a month and
-35,253,450 in all. They cover 27 reporters, 246 partner codes, 9,783 eight-digit product codes and
-5,468 product codes ending in X.
-
-The data is official, and several of its properties give a wrong number without anything
-failing:
+one 7z archive per month, 45 to 48 MB, holding one CSV of 18 columns, 400 to 423 MB extracted.
+Loaded here: January to July 2026, from the publication of 2026-10-16, 4,877,993 to 5,149,512 rows
+a month. Several properties of the data give a wrong number without anything failing:
 
 | What is in the data | Measured | What the pipeline does |
 |---|---|---|
 | Each file carries its own totals as rows, `PRODUCT_NC = TOTAL`, next to the rows they add up | July 2026: 1,224,894.873 M EUR in the `TOTAL` rows and 1,224,894.940 in the others. A sum over the file counts every euro twice | Silver puts them in a table of their own, `trade_totals` |
 | Eurostat republishes months under the same file name, with other rows | May 2026 went from 4,988,013 rows in the publication of 2026-09-15 to 4,994,361 in that of 2026-10-16, and its total by 294.2 M EUR | The watermark records the publication each file came from, not only its month |
-| A partner confidential at product level moves to the codes QY and QZ in the rows by product, while the `TOTAL` row still names it | July 2026: 9,738.2 M EUR, 0.80% of the month | Rankings by partner read the totals; questions by product read the detail, and report what QY and QZ hold |
-| Product codes ending in X hold confidential or estimated trade, at the level of a chapter, a heading or a subheading | July 2026: 78,498 rows, 1.56% of the detail, and 2.93% of its value | `is_x_code`, and an HS hierarchy that stops at the level the code keeps |
-| A weight of 0 next to a positive value | 5.31% to 5.62% of the rows by product, every month | Kept and counted by check 06a. A value per kilogram needs a positive weight |
-| The newest month of the listing arrives without most of its intra-EU trade | August 2026, as listed on 2026-10-20: 25,760,599 bytes, against 44.7 and 44.3 MB for August 2024 and 2025, with the intra-EU trade of 9 of the 27 reporters: 59,438 M EUR of intra-EU exports, against the 322,390 published | An open window stops at the month before the last one listed, and lands the newest with the next release |
+| A partner confidential at product level moves to the codes QY and QZ in the rows by product, while the `TOTAL` row still names it | July 2026: 9,738.2 M EUR, 0.80% of the month | Rankings by partner read the totals; questions by product read the detail |
+| The newest month of the listing arrives without most of its intra-EU trade | August 2026, as listed on 2026-10-20: the intra-EU trade of 9 of the 27 reporters, 59,438 M EUR of intra-EU exports against the 322,390 published | An open window stops at the month before the last one listed |
 
-Where the partner of a flow is not where the goods come from, and why ships follow their owner, is
-in [Results](#results) and [Limitations](#limitations). Why the newest month comes incomplete,
-from Eurostat's manual, is in
-[the notes](docs/engineering-notes.md#the-source).
-Every property of the source, with its counts, is in
-[`docs/engineering-notes.md`](docs/engineering-notes.md), from The source to Silver.
+Every property of the source, with its counts and the pages of Eurostat's manual, is in the notes,
+from [The source](docs/engineering-notes.md#the-source) to [Silver](docs/engineering-notes.md#silver).
 
 ## Architecture
 
-The pipeline runs as one Job on Databricks serverless, from Eurostat to the views: its first task
-lands the months of the window in a Volume, and the six notebooks after it build the layers.
+One Job on Databricks serverless: its first task lands the months in a Volume, and six notebooks
+build the layers.
 
 ```mermaid
 flowchart TB
@@ -97,23 +90,11 @@ flowchart TB
     GO -.->|05_gold_quality_checks, then the watermark| OPS
 ```
 
-The Job `eu_trade_pipeline` runs the seven tasks in the order of their numbers, one run at a time,
-from the branch `main` of this repository.
-
-Three properties of this shape are deliberate.
-
-- **The landing is the first task.** It downloads from `ec.europa.eu` on the serverless compute of
-  the Job, which reaches the internet on Free Edition, and extracts each archive on the driver's
-  disk before copying its CSV into the Volume, which does not take the random writes of an
-  extraction
-  ([Landing and the manifest](docs/engineering-notes.md#landing-and-the-manifest)).
-  A run processes what it landed itself, with no step outside the workspace.
-- **Bookkeeping has a schema of its own.** `ops` holds the results of the checks and the
-  watermark, so rebuilding bronze, silver or gold does not take the record of what was checked and
-  processed with it.
-- **The watermark is written last.** The gold checks write it, and only when every result of both
-  layers matched its expectation. A run that stops leaves its months pending, and the next run
-  writes them again in place.
+- **The landing is the first task.** It downloads from `ec.europa.eu` on serverless and extracts
+  each archive on the driver's disk ([Landing](docs/engineering-notes.md#landing-and-the-manifest)).
+- **Bookkeeping has its own schema.** `ops` keeps check results and the watermark through a rebuild.
+- **The watermark is written last**, only when every check of both layers matched its expectation:
+  a run that stops leaves its months pending.
 
 ## Tech Stack
 
@@ -123,18 +104,51 @@ Three properties of this shape are deliberate.
 | Landing | Unity Catalog Volume, written through the driver's disk | Each month is downloaded and extracted on the driver and copied in one sequential write, next to a manifest of what the Volume holds |
 | Processing | PySpark on Databricks serverless, environment version 6 | The notebooks run through Spark Connect, and the tests run the same logic on a local Spark |
 | Storage | Delta tables managed by Unity Catalog | `replaceWhere` rewrites one month in place, time travel reads the version before for about 7 days, and MERGE loads the dimensions with history |
-| Data quality | Checks in PySpark, results in `ops.dq_check_results` | Each check declares its expected failures, and a result off its expectation stops the run |
 | Orchestration | Databricks Jobs | Seven tasks in a chain, read from the GitHub repository, one run at a time, with a monthly schedule, paused |
 | Analysis | Spark SQL views and queries in `sql/` | One view per business question, one query per answer |
-| Tests and CI | pytest, ruff, mypy, GitHub Actions | 245 tests, 130 of them on a local Spark with Delta, over real rows of the landed files, on every push |
 
-**Why Spark, for 35 million rows.** The data comes as monthly files of about five million rows,
-and every layer is partitioned by month: each run reads, rewrites and checks whole months, which is
-the shape Spark distributes. Seven months still fit on one machine, and the logic was developed on
-one ([What Is Not in This Repository](#what-is-not-in-this-repository)). Databricks adds what one
-machine does not have: Unity Catalog, compute that reaches Eurostat, a Job with the history of its
-runs, and a SQL warehouse over gold. A month more is a partition more, about five million rows,
-and enters the window on its own.
+**Why Spark, for 35 million rows.** The data comes as monthly files of about five million rows, and
+every run reads, rewrites and checks whole months, the shape Spark distributes. Seven months fit on
+one machine; a month more is a partition more, and enters the window on its own.
+
+## Repository Layout
+
+```text
+.
+├── .github/workflows/ci.yml       # ruff, mypy and the whole test suite on every push to main
+├── docs/
+│   ├── engineering-notes.md       # how each layer works, its rules and their numbers
+│   ├── development.md             # install, deploy, what runs differently on serverless, tests
+│   └── data_dictionary.md         # every table and column, and the code lists
+├── jobs/trade_pipeline_job.json   # the Job: seven tasks, two parameters, a paused schedule
+├── notebooks/                     # 00_land to 06_gold_views, one per task (Pipeline Steps)
+├── reference/
+│   ├── euro_area_members.csv      # seed: when each member joined the euro area, and the source
+│   └── partner_special_codes.csv  # seed: the 10 Q codes, partners that are not a country
+├── sql/
+│   ├── gold_views.sql             # the six views of the business questions
+│   ├── analysis_queries.sql       # one query per question, printed by the last task
+│   └── results_queries.sql        # the counts and cases behind Results, run by no task
+├── src/
+│   ├── config.py                  # constants: source URLs, catalog names, the expected header
+│   ├── land.py                    # lands the months of the window and the code lists
+│   ├── manifest.py                # manifest.csv: the publication of each landed archive
+│   ├── watermark.py               # which months are pending, against ops.etl_watermark
+│   ├── bronze.py                  # reads a landed file, every column as text
+│   ├── silver.py                  # the two typed silver tables
+│   ├── silver_checks.py           # the 13 silver checks and the failures each one expects
+│   ├── gold.py                    # the facts, the dimensions and the MERGE of the versions
+│   ├── gold_checks.py             # the 7 gold checks and the failures each one expects
+│   ├── gold_views.py              # creates the views from sql/gold_views.sql
+│   └── deploy_job.py              # creates the Job from its definition, or replaces it
+├── tests/                         # 245 tests, 130 of them on a local Spark with Delta
+├── .gitattributes                 # LF line endings in every text file; 7z archives as binary
+├── .gitignore                     # the virtual environment, secrets, Spark and tool caches
+├── LICENSE                        # MIT
+├── pyproject.toml                 # the settings of pytest and ruff; not a package
+├── requirements.in                # the direct dependencies, and the range each one may move in
+└── requirements.txt               # the lock compiled from it: every package at one version
+```
 
 ## Pipeline Steps
 
@@ -148,15 +162,12 @@ and enters the window on its own.
 | 6 | [`05_gold_quality_checks`](notebooks/05_gold_quality_checks.py): 7 checks, then the watermark | `ops.dq_check_results`, `ops.etl_watermark` | A result of either layer is off its expectation |
 | 7 | [`06_gold_views`](notebooks/06_gold_views.py): the six views, then the answers | 6 views in `gold` | A view loses, adds or splits the value of the fact rows it reads |
 
-Notebooks 01 to 05 process only the pending months (see [Incremental Load](#incremental-load)),
-and end without writing when there are none. The rules of each step, its counts and the cases that
-fail it are in the [engineering notes](docs/engineering-notes.md).
+Notebooks 01 to 05 process only the pending months, and end without writing when there are none.
+The cases that fail each step are in the [engineering notes](docs/engineering-notes.md).
 
 ## Data Model
 
-Two facts, one per silver table, share five dimensions. A row by product keeps the five parallel
-classifications of the source, SITC, CPA 2.1, CPA 2.2, BEC and BEC5, on the fact: an X code can take
-several rows that differ only in them.
+Two facts, one per silver table, share five dimensions.
 
 ```mermaid
 erDiagram
@@ -232,52 +243,20 @@ erDiagram
 
 **Two facts, because the two kinds of rows name different partners.** Rankings by partner read
 `fct_trade_totals`, whose `TOTAL` rows name the real partner; questions by product read
-`fct_trade_detail`. Over a month of more than a trillion euros the two differ by tens of thousands:
-66,547.619 EUR in July 2026, and gold check 07 measures where.
+`fct_trade_detail`. In July 2026 they differ by 66,547.619 EUR, and gold check 07 measures where.
 
-**`dim_country` and `dim_product` keep their history**, one row per version of a code. A version
-starts where one of its sources starts a row, or the day after it ends one: the code lists, the EU
-and euro-area zones, and two seeds written by hand. They load with a MERGE on `(code, valid_from)`, written by hand, that
-updates a version whose end or attributes changed, inserts a new one, and counts one missing from
-the source instead of deleting it. The keys are `xxhash64(code, valid_from)`, so a rebuilt
-dimension keeps them, and a fact row joins the version that covers its month. Bulgaria shows why:
-
-| `country_code` | `valid_from` | `valid_to` | `is_intra_eu` | `is_euro_area` |
-|---|---|---|---|---|
-| BG | 1976-01-01 | 2006-12-31 | false | false |
-| BG | 2007-01-01 | 2025-12-31 | true | false |
-| BG | 2026-01-01 | 2500-12-31 | true | true |
-
-Bulgaria adopted the euro on 2026-01-01, and Eurostat's relation of the euro area has no row for
-it: it was last published on 2025-02-24. The euro area comes from a seed instead,
-[`reference/euro_area_members.csv`](reference/euro_area_members.csv), with the source of each row.
-Built from the relation as published, `dim_country` would leave Bulgaria outside the euro area for
-all of 2026, and with it 101,142 rows by product of the May 2026 file of 2026-09-15.
-
-The changes of 2026 went through the MERGE of the real tables while the model was developed.
-Written as they stood on 2025-12-31 and merged with today's, `dim_country` had one version
-updated and one inserted, Bulgaria's, and `dim_product` 14 updated, the codes closed on
-2025-12-31, and 27 inserted, opened on 2026-01-01, lithium nickel manganese cobalt oxides and
-lithium iron phosphate among them. Two tests run the same MERGE over real lines of the code
-lists
+**`dim_country` and `dim_product` keep their history, as SCD type 2**: one row per version of a
+code, 390 and 30,985, loaded by a MERGE on `(code, valid_from)` written by hand. Bulgaria's trade of
+July 2026 joins its euro-area version, and its trade of 2025 does not
 ([Dimensions with history (SCD type 2)](docs/engineering-notes.md#dimensions-with-history-scd-type-2)).
-
-Every column, with its type and where it comes from, is in
-[`docs/data_dictionary.md`](docs/data_dictionary.md). Each modelling choice, with the alternatives
-and their numbers, is in the [engineering notes](docs/engineering-notes.md#gold).
+Every column is in [`docs/data_dictionary.md`](docs/data_dictionary.md).
 
 ## Data Quality
 
 **20 checks, 13 on silver and 7 on gold, and over the seven months every one found exactly the
-failures it expects.** A check writes one row per table and file to `ops.dq_check_results`, in a
-schema apart from the data: what it read, how many rows broke its rule, and what it expected, a
-count or a range for a share of the rows. The notebook reads its results back and stops the run on
-any result off its expectation, in either direction, so a check that starts passing stops it as
-surely as one that starts failing. Every month expects the same rule, whatever the month and its
-publication, so a month new to the pipeline, or republished with other counts, needs nothing
-declared.
-
-What the checks found in the full months of January to July 2026:
+failures it expects.** Each writes one row per table and file to `ops.dq_check_results`: what it
+read, how many rows broke its rule, and what it expected, a count or a range for a share. A result
+off its expectation, in either direction, stops the run, and every month expects the same rule.
 
 | Check | Rule | Found |
 |---|---|---|
@@ -287,71 +266,45 @@ What the checks found in the full months of January to July 2026:
 | The other 17 | Codes valid on the month's date, values not negative, the month of the file, every `TOTAL` row of its expected shape, no duplicate on the grain, trade type agreeing with EU membership, lossless casts, nulls only from a sentinel; in gold, each silver row one fact row, every key resolved to exactly one row of each dimension, values equal to silver's, unique keys, versions that do not overlap and that cover the month of each fact row | 0 |
 
 **A check off by one row stops the run.** With the expectation of 06a moved by one row, up and then
-down, the run wrote its results and stopped, naming the check, the table, the file and both counts.
-
-The checks of the notebooks themselves come on top: bronze counts each file's lines without the
-CSV parser, silver accounts for every bronze row, gold for every silver row, and the views for the
-value of every fact row they read ([Pipeline Steps](#pipeline-steps)). The rule, the reasoning and
-the measured result of each check are in the notes,
-[Quality checks](docs/engineering-notes.md#quality-checks).
+down, the run wrote its results and stopped, naming the check, the table, the file and both counts
+([Quality checks](docs/engineering-notes.md#quality-checks)).
 
 ## Incremental Load
 
 **A month is pending when its file was landed from a publication the pipeline has not
-processed**: new to the pipeline, or republished by Eurostat since. The month in the file name
-cannot tell them apart, because Eurostat regenerates published months in place, under the same
-name, with other rows and sometimes the same size. The publication time can, and two records
-carry it:
+processed**: new, or republished by Eurostat under the same name. The landing task writes
+`manifest.csv` in the Volume ([`src/land.py`](src/land.py)), one row per landed archive with the
+size and publication time of Eurostat's listing; the gold checks write `ops.etl_watermark`, one row
+per file processed; notebooks 01 to 05 compare the two ([`src/watermark.py`](src/watermark.py)).
+The rows behind two runs on serverless:
 
-| Record | Holds | Compared with |
-|---|---|---|
-| `manifest.csv` in the Volume | The size and publication time of each landed archive | The listing of the bulk download facility, by the landing |
-| `ops.etl_watermark` | One row per file, with the publication processed | The Volume's manifest, by each notebook from 01 to 05 |
+| Month | `manifest.csv` | `ops.etl_watermark` at first | Run over 202601 to 202606 | Run over 202601 to 202607 |
+|---|---|---|---|---|
+| 202605 | 46,148,464 bytes, `2026-10-16T10:00:08` | 46,127,843 bytes, `2026-09-15T09:38:30` | Pending: republished. Bronze replaced its 4,988,013 rows with 4,994,361 | Not pending |
+| 202606 | 47,304,745 bytes, `2026-10-16T10:00:09` | The same | Not pending | Not pending |
+| 202607 | 46,802,030 bytes, `2026-10-16T10:00:09` | No row | Outside the window | Pending: new. 5,050,155 rows into bronze |
 
-Bronze, silver and both facts replace the pending months whole, with `replaceWhere` on the month,
-so a month written twice is written in place, never added. **A republished month is replaced
-without asking**: the landing writes its CSV and its copy of the published figures over the old
-ones, and the Delta tables hold only the new publication. The one before can be read by time travel
-for about 7 days, until the `VACUUM` of predictive optimization removes its files
-([Landing and the manifest](docs/engineering-notes.md#landing-and-the-manifest)). Its checks need nothing
-declared, since every month expects the same rule.
+Each run took the manifest's row into the watermark for the month it processed, and wrote no other
+month. A pending month is replaced whole, with `replaceWhere`, and the publication before can be
+read by time travel for about 7 days, until the `VACUUM` of predictive optimization removes its
+files ([The incremental run](docs/engineering-notes.md#the-incremental-run)).
 
-Three runs over the full months on serverless:
+**The window is open at its end.** A run takes the months from `start_period`, `202601` by default,
+to `end_period`, empty by default: the landing then stops at the month before the last one listed,
+which lacks most of its intra-EU trade ([Dataset](#dataset)), and lands it with the next release.
 
-| Run | Months | What happened |
-|---|---|---|
-| Republished | 202601 to 202606, with 202605 republished | Only 202605 pending. Bronze replaced its 4,988,013 rows with 4,994,361, the watermark changed in that month alone, and the views of the other five months stayed identical, byte for byte. May's total moved by 294.2 M EUR |
-| New month | 202601 to 202607 | Only 202607 pending: 5,050,155 rows into bronze, 35,253,450 in all, and the watermark at 7 rows |
-| Nothing pending | The same | Notebooks 01 to 05 ended without writing, and no table gained a version |
-
-The Job then landed 202607 again from Eurostat, with its CSV deleted from the Volume and its row
-from the watermark, and took it through every layer: its views printed the same 42 lines as the
-run of the new month, byte for byte ([The Job](docs/engineering-notes.md#the-job)).
-
-**The window is open at its end.** A run takes the months from the parameter `start_period`,
-`202601` by default, to `end_period`, empty by default. Empty, the landing stops at the month
-before the last one listed, since the newest month lacks most of its intra-EU trade
-([Dataset](#dataset)), and lands that month with the next release, once complete. The notebooks
-take their months from the Volume's manifest, which therefore never holds the incomplete one
-([The incremental run](docs/engineering-notes.md#the-incremental-run)). A run with the defaults
-over the seven months left 202608 out, found nothing pending, and printed the same 42 lines.
-
-**The schedule is paused.** The definition of the Job runs it monthly, on the 20th at 06:00
-Brussels time, after each Eurostat release: that is how it would run in production, and a month
-would then enter on its own, about the 20th of the third month after it. Here a schedule would
-spend the compute quota on its own, so it stays paused, and a run starts by hand.
+**The schedule is paused.** The Job runs monthly, on the 20th at 06:00 Brussels time, as it would
+in production; here a schedule would spend the compute quota on its own, so a run starts by hand.
 
 ## How to Run
 
-Requires Python 3.12 for the deploy, the tests and lint, and a Databricks workspace for the
-pipeline, where Free Edition is enough. Without an account, the tests run over real rows of the
-landed files. The commands are for PowerShell on Windows, where the project was built. On Linux or
-macOS the interpreter is `.venv/bin/python`, and a variable is set with `export`.
+Requires Python 3.12 for the deploy and the tests, and a Databricks workspace, where Free Edition
+is enough; the tests need no account. The commands are for PowerShell on Windows; on Linux or
+macOS the interpreter is `.venv/bin/python`.
 
-**1. Install.** On Windows with long paths disabled, the default, the install of `pyspark` fails
-with `OSError: [Errno 2]` when the repository's path is longer than 116 characters: clone to a
-short path, such as `C:\src`, or enable long paths. Check also that `python` is a 3.12: it and the
-`py` launcher can resolve to different interpreters.
+**1. Install.** Clone to a short path, such as `C:\src`: with Windows long paths disabled, the
+`pyspark` install fails beyond 116 characters. Check that `python`, not only the `py` launcher,
+resolves to a 3.12.
 
 ```powershell
 git clone https://github.com/rdiguglielmo/eu-trade-lakehouse
@@ -360,34 +313,22 @@ python -m venv .venv
 .venv\Scripts\python -m pip install -r requirements.txt
 ```
 
-`requirements.txt` pins every package, dependencies included, at one version: those of the
-landing, the Databricks SDK of the deploy, and Spark and Delta as the engine of the tests
-([Environment](docs/development.md#environment)). `pyproject.toml` holds only the settings
-of pytest and ruff.
+**2. Prepare the workspace.** On Databricks Free Edition: a catalog `eu_trade`, created in Catalog
+Explorer; a Git credential for GitHub, so the Job reads the notebooks from the `git_url` of
+[`jobs/trade_pipeline_job.json`](jobs/trade_pipeline_job.json); and a personal access token with
+the scope `jobs`, from `DATABRICKS_HOST` and `DATABRICKS_TOKEN` or a profile of `~/.databrickscfg`.
 
-**2. Prepare the workspace.** On Databricks Free Edition:
-
-- a catalog `eu_trade`, created in Catalog Explorer: the landing creates its schema and the
-  Volume, not the catalog;
-- a Git credential for GitHub, so the Job can read the notebooks from the repository in the
-  `git_url` of [`jobs/trade_pipeline_job.json`](jobs/trade_pipeline_job.json); here, the
-  Databricks GitHub App, with access to this repository. A fork changes the `git_url`;
-- a personal access token with the scope `jobs`, for the deploy, from `DATABRICKS_HOST` and
-  `DATABRICKS_TOKEN` or a profile of `~/.databrickscfg`, here one of its own named `jobs`.
-
-**3. Deploy the Job, and run it.**
+**3. Deploy the Job once, from a terminal; after it, everything runs in Databricks.**
 
 ```powershell
 $env:DATABRICKS_CONFIG_PROFILE = 'jobs'
 .venv\Scripts\python src\deploy_job.py
 ```
 
-The deploy creates the Job `eu_trade_pipeline` from its definition, or replaces the settings of
-the one of that name, and starts no compute. The Job starts from the Jobs page, with Run now. With
-the defaults a run lands every month from 202601 to the month before the last one listed, 45 to 48
-MB each to download, and builds every layer over the pending ones; Run now with different
-parameters sets `start_period` and `end_period`, as `YYYYMM`, for one run. The last task prints
-the answers of [`sql/analysis_queries.sql`](sql/analysis_queries.sql).
+The deploy creates the Job `eu_trade_pipeline`, or replaces its settings, and starts no compute
+([Deploying the Job](docs/development.md#deploying-the-job)). Run now, on the Jobs page, lands every
+month from 202601 to the month before the last one listed and builds every layer; `start_period`
+and `end_period`, as `YYYYMM`, change the window for one run.
 
 **Tests and lint.**
 
@@ -399,19 +340,13 @@ the answers of [`sql/analysis_queries.sql`](sql/analysis_queries.sql).
 .venv\Scripts\python -m mypy src notebooks
 ```
 
-245 tests. The 115 not marked `spark` start no JVM, and run wherever the lock is installed. The
-130 marked `spark` start a local Spark with Delta, which needs a JDK 17 and `JAVA_HOME`, and on
-Windows can hang at the start of its first session. The CI runs ruff, mypy and the whole suite on
-every push, on Ubuntu, in 7 to 11 minutes
-([Tests and lint](docs/development.md#tests-and-lint)).
+The 130 tests marked `spark` need a JDK 17 and `JAVA_HOME`; the other 115 start no JVM. The CI runs
+all 245 on every push, on Ubuntu, in 7 to 11 minutes ([Tests and lint](docs/development.md#tests-and-lint)).
 
 ## Results
 
-What the data says for July 2026 (202607), the latest of the seven full months loaded, January to
-July 2026. Every figure comes from a query: one per business question in
-[`sql/analysis_queries.sql`](sql/analysis_queries.sql), and the counts and cases behind the text in
-[`sql/results_queries.sql`](sql/results_queries.sql). Each section names its queries by the first
-line of their comment. Values are in million EUR and shares in percent, to one decimal.
+What the data says for July 2026 (202607), the latest of the seven months loaded. Every figure
+comes from a query, linked below each section. Values are in million EUR and shares in percent.
 
 Source: Eurostat, international trade in goods, detailed data by CN8 (Comext bulk download),
 publication of 2026-10-16. Eurostat's
@@ -425,50 +360,38 @@ edition.
 ### Question 1: Germany is the first partner of 13 reporters' imports and 15 reporters' exports
 
 Germany imports first from the Netherlands, 17,621.3 M EUR or 14.5% of its imports, then China,
-7.6%, and Poland, 7.3%. It exports first to the United States, 10.9%, then France, 7.4%, and the
-Netherlands, 7.0%: the same three partners, in the same order, as in January.
+7.6%, and Poland, 7.3%; it exports first to the United States, 10.9%, then France, 7.4%, and the
+Netherlands, 7.0%: the same three, in the same order, as in January. Over the seven months, 113 of
+the 162 top-three positions keep their January rank, and 20 go to partners new to the top three.
 
-**The ranking holds over the seven months: 113 of the 162 top-three positions keep their January
-rank.** Of the other 49, 29 belong to partners that were already in the top three and changed
-places, and 20 to partners new to it, 11 in imports and 9 in exports. Morocco ranked 80th among
-Cyprus's export partners in January and is second in July; the British Virgin Islands, from which
-Malta imported nothing in January, are second among its import partners (Partners far from a
-reporter's routes, below).
-
-*Queries: Question 1; Question 1, how the ranking changed; Question 1, the first partners.*
+Queries: [the answer](sql/analysis_queries.sql#L5-L35) · [how the ranking changed](sql/results_queries.sql#L7-L39) · [the first partners](sql/results_queries.sql#L41-L52)
 
 ### Question 2: 10 of the 27 reporters are in surplus, and mineral fuels are the largest deficit of 18
 
 Germany's surplus, +21,972.0 M EUR, comes first from vehicles (chapter 87), +9,338.4, against
-mineral fuels (chapter 27), -5,435.6. Chapter 27 is the largest deficit of 18 reporters, and
-vehicles of 4. Ireland's surplus comes first from pharmaceutical products (chapter 30), +4,688.6.
-France has the largest deficit, -7,197.2, though aircraft (chapter 88) give it a surplus of
-+2,068.3.
+mineral fuels (chapter 27), -5,435.6. Ireland's comes first from pharmaceutical products (chapter
+30), +4,688.6. France has the largest deficit, -7,197.2, though aircraft (chapter 88) give it a
+surplus of +2,068.3.
 
-*Queries: Question 2; Question 2, surplus and deficit.*
+Queries: [the answer](sql/analysis_queries.sql#L37-L72) · [surplus and deficit](sql/results_queries.sql#L54-L86)
 
 ### Question 3: the intra-EU share of imports runs from Slovenia's 33.4% to Luxembourg's 87.9%
 
-Germany's is 64.6%. Cyprus sends the smallest share of its exports to the EU, 19.5%. By chapter,
-over every reporter, the lowest intra-EU shares of imports are works of art (chapter 97), 12.2%,
-articles of feathers and human hair (67), 22.9%, and ships (89), 28.2%; the highest is cork (45),
-95.2%.
+Germany's is 64.6%, and Cyprus sends the smallest share of its exports to the EU, 19.5%. By
+chapter, over every reporter, the lowest intra-EU shares of imports are works of art (chapter 97),
+12.2%, and ships (89), 28.2%; the highest is cork (45), 95.2%.
 
-*Queries: Question 3, by country; Question 3, by product.*
+Queries: [by country](sql/analysis_queries.sql#L74-L85) · [by product](sql/analysis_queries.sql#L87-L108)
 
 ### Question 4: seven headings come from, or go to, a single partner
 
 Among the headings that hold at least 1% of a reporter's flow, seven have a single partner at
-100.0% of their value: electricity imported by Malta from Italy and by Portugal from Spain, aircraft
-imported by Croatia from Canada and by Luxembourg from the United States, ships imported by Malta
-from Italy, Malta's exports of coal-tar oils (2707) to France, and Cyprus's exports of odoriferous
-mixtures (3302) to Libya.
+100.0% of their value, electricity imported by Malta from Italy among them. Germany depends most
+on refined petroleum from the Netherlands, 64.7%, batteries from China, 44.0%, and gas turbines
+from the United States, 39.6%. Slovenia's medicaments (3004) are 38.4% of its exports, and 67.7%
+of them go to Switzerland, against 71.2% to 87.8% in the six months before.
 
-Germany depends most on refined petroleum from the Netherlands, 64.7%, batteries from China, 44.0%,
-and gas turbines from the United States, 39.6%. Slovenia's medicaments (3004) are 38.4% of its
-exports, and 67.7% of them go to Switzerland, against 71.2% to 87.8% in the six months before.
-
-*Queries: Question 4; Processing trade, month by month.*
+Queries: [the answer](sql/analysis_queries.sql#L110-L145) · [Slovenia's medicaments, month by month](sql/results_queries.sql#L251-L264)
 
 ### Question 5: 275 of 2,749 products and flows have a dearest partner at ten times the cheapest or more
 
@@ -483,122 +406,77 @@ and the manual explains neither:
 | Active ingredients | Lactams (29337900), imported | Ireland, 27,118.63 | United States, 4.31 | 6,291.00 |
 | Active ingredients | Heterocyclic compounds (29335995), imported | Switzerland, 108,009.95 | Germany, 109.10 | 990.00 |
 
-A third, quantities that do not add up, is in Limitations.
+**A gap inside one code need not be a gap in price.** Unroasted coffee (09011100) runs from Viet
+Nam's 3.50 EUR per kilogram to Kenya's 6.86, and the code holds every coffee neither roasted nor
+decaffeinated. A third pattern is in [Limitations](#limitations).
 
-**A gap inside one code need not be a gap in price.** Unroasted coffee (09011100) comes from 17
-partners of at least 10 M EUR, from Viet Nam's 3.50 EUR per kilogram to Kenya's 6.86, 1.96 times.
-The code holds every coffee neither roasted nor decaffeinated, so its partners can be selling
-different coffees.
-
-*Queries: Question 5; Question 5, the spread of the gaps; Value per kilogram within one code.*
+Queries: [the answer](sql/analysis_queries.sql#L147-L193) · [the spread of the gaps](sql/results_queries.sql#L88-L112) · [coffee within one code](sql/results_queries.sql#L266-L278)
 
 ### Processing trade: 98.5% of Slovenia's imports from Switzerland are for inward processing
 
 Switzerland is Slovenia's first partner in both flows: 2,216.9 M EUR of imports, 23.7%, and 2,170.5
-of exports, 27.5%. 98.5% of those imports and 97.1% of those exports run under statistical
-procedure 2, inward processing. Organic chemicals (chapter 29), 1,194.6 M EUR, and pharmaceutical
-products (30), 988.1, come in; pharmaceutical products, 2,106.5, go out. Goods that cross a border
-to be processed, and the goods that come back, are recorded at their full value even when their
-ownership does not change (manual, pp. 25-26, 32 and 34-35): the figures measure the whole value
-of the goods, not the value Slovenia adds to them.
+of exports, 27.5%, and 98.5% and 97.1% of them run under statistical procedure 2. They are recorded
+at the full value of the goods, even when their ownership does not change (manual, pp. 25-26, 32
+and 34-35), not at the value Slovenia adds to them.
 
-*Queries: Question 1; Processing trade: Slovenia's trade with Switzerland by statistical
-procedure; Processing trade: Slovenia's trade with Switzerland by chapter and procedure.*
+Queries: [by procedure](sql/results_queries.sql#L114-L133) · [by chapter and procedure](sql/results_queries.sql#L135-L173)
 
 ### Partners far from a reporter's routes
 
 **The British Virgin Islands are Malta's second import partner, 155.0 M EUR or 14.7% of its
-imports, and all of it is yachts (heading 8903).** They ranked 30th the month before. Yachts are
-also Malta's largest import from Italy, 51.8 M EUR, and from France, 31.2. In the manual a
-vessel's partner follows its owner, not its route: a vessel is traded in the month its economic
-ownership changes, under statistical procedure 9 (pp. 35 and 87-90). These imports are under
-procedure 1, so the data does not show a change of ownership.
+imports, all of it yachts (heading 8903)**, after ranking 30th the month before. In the manual a
+vessel's partner follows its owner, and a vessel is traded under statistical procedure 9 (pp. 35
+and 87-90); these imports are under procedure 1.
 
-**Cyprus's three first export partners are Lebanon, Morocco and Libya, and 84.0% to 99.8% of
-what each takes is refined petroleum exported after inward processing.** They take 103.1, 100.8
-and 91.6 M EUR, 15.5%, 15.2% and 13.8% of Cypriot exports, and heading 2710 under statistical
-procedure 2 accounts for 101.0, 100.6 and 77.0 of it. The data does not say why these partners.
+**Cyprus's three first export partners are Lebanon, Morocco and Libya, 15.5%, 15.2% and 13.8% of
+its exports, and 84.0% to 99.8% of what each takes is refined petroleum (heading 2710) exported
+after inward processing.** The data does not say why these partners.
 
-*Queries: Question 1; Partners far from a reporter's routes.*
+Queries: [both cases, by heading and procedure](sql/results_queries.sql#L175-L249)
 
 ## What Is Not in This Repository
 
-- **A dashboard.** The answers are in [Results](#results), each with the query behind it, and the
-  views in `gold` keep every heading and every partner for a report that wants other floors. The
-  Power BI work is in the projects before this one,
-  [rdiguglielmo/sec-edgar-financial-pipeline](https://github.com/rdiguglielmo/sec-edgar-financial-pipeline)
-  and
-  [rdiguglielmo/us-restaurant-financials-analysis](https://github.com/rdiguglielmo/us-restaurant-financials-analysis).
-- **A way to run the pipeline locally.** The transformation logic was developed and verified on a
-  local Spark 4.2 with Delta 4.4, to spend no compute quota of Free Edition. That setup is not part
-  of this repository: here a local Spark is only the engine of the tests.
-- **The data, and an export of gold.** The landed files live in the Volume, where the first task
-  of the Job puts them: a month is 45 to 48 MB to download and 400 to 423 MB extracted. The Job
-  rebuilds every table from them, and [Results](#results) gives every number with the query behind
-  it; the detail fact alone holds 35,164,358 rows.
-- **The Databricks workspace.** A Free Edition workspace can be deleted after a long inactivity.
-  Everything it holds is rebuilt from this repository: the Job by `src/deploy_job.py`, the Volume
-  by its landing task, and the tables by its other tasks.
-- **The exploratory notebooks** that measured the source before the layers were designed. Every
-  measurement a decision rests on is in [`docs/engineering-notes.md`](docs/engineering-notes.md).
+- **A dashboard.** The answers are in [Results](#results), each with its query. The Power BI work
+  is in [rdiguglielmo/sec-edgar-financial-pipeline](https://github.com/rdiguglielmo/sec-edgar-financial-pipeline)
+  and [rdiguglielmo/us-restaurant-financials-analysis](https://github.com/rdiguglielmo/us-restaurant-financials-analysis).
+- **A way to run the pipeline locally.** The logic was developed on a local Spark 4.2 with Delta
+  4.4, to spend no compute quota; here a local Spark is only the engine of the tests.
+- **The data, and an export of gold.** The Job lands the files in the Volume and rebuilds every
+  table from them; the detail fact alone holds 35,164,358 rows.
+- **The Databricks workspace.** A Free Edition workspace can be deleted after a long inactivity;
+  the Job, the Volume and every table are rebuilt from this repository.
+- **The exploratory notebooks** that measured the source: every measurement a decision rests on is
+  in the [engineering notes](docs/engineering-notes.md).
 - **dbt.** The medallion layers written by hand in PySpark are what this project shows. The SEC
   EDGAR pipeline builds its warehouse with dbt.
 
 ## Limitations
 
-What the project cannot answer, each with the number that bounds it. The figures are those of
-July 2026 unless a line says otherwise.
+What the project cannot answer, with the number that bounds it, for July 2026 unless stated.
 
 - **Where the goods were made.** The partner of an intra-EU import is the member state the goods
-  were shipped from; that of an extra-EU import, the country of origin (manual, pp. 30 and 60).
-  Goods released for free circulation in Rotterdam reach Germany as Dutch intra-EU exports (pp.
-  36-37), so the Netherlands, Germany's first import partner with 14.5%, can be shipping goods made
-  elsewhere, and the data cannot tell how much. The manual names the same effect for the ports of
-  Belgium and the airports of Luxembourg and Hungary. Germany's refined petroleum from the
-  Netherlands, 64.7% in question 4, can be Dutch refining or transit.
-- **Who the partner is, for part of the trade.** Trade whose partner is confidential or not
-  specified sits under Q codes, which count in a flow's total but name no partner, so a share in
-  question 4 is a lower bound. In its answer the Q codes hold up to 35.7% of a heading, the
-  Netherlands' exports of yachts (8903), whose largest named partner, the United States, holds
-  63.2%.
-- **A value per kilogram where the value is right and the weight is not.** A reporter may publish
-  a value and keep its quantity confidential; the net mass of intra-EU trade in a code with a
-  supplementary unit may be estimated; a weight below 0.5 kg reads 0; and the manual places the
-  most common errors at the most detailed level, ratios of value to volume among them (pp. 33-34,
-  40-41 and 48-49). Machining centres (84571090) imported from Germany at 0.03 EUR per kilogram,
-  against 60.97 from Switzerland, are a ratio these mechanisms leave open, and the manual does not
-  say which applies.
-- **Why the detail exceeds the totals.** In each of the seven months the rows by product add up to
-  61,919 to 68,009 EUR more than the `TOTAL` rows, and only France's intra-EU trade passes the
-  tolerance of gold check 07, 0.01 M EUR, in both flows and every month: imports 12,381 to 15,452
-  EUR above the totals, exports 24,144 to 26,751. No documented cause explains it. The manual does
-  not mention rounding, and the one exception it describes, confidential trade kept in a country's
-  total but allocated to no chapter (p. 42), would put the totals above the detail.
-- **Seasonality, and change over a year.** Seven months of 2026 are loaded, January to July. The
-  ranking change of question 1 runs over those months only, and no figure compares a month with the
-  same month a year before.
-- **Figures that change after publication.** Every figure is from the publication of 2026-10-16,
-  and Eurostat republishes months under the same file name: the total for May 2026 moved by
-  294.2 M EUR between the publications of 2026-09-15 and 2026-10-16
-  ([The incremental run](docs/engineering-notes.md#the-incremental-run)).
+  were shipped from (manual, pp. 30 and 60). Goods released for free circulation in Rotterdam reach
+  Germany as Dutch exports (pp. 36-37): the Netherlands, Germany's first import partner with 14.5%,
+  can be shipping goods made elsewhere.
+- **Who the partner is, for part of the trade.** Q codes count in a flow's total but name no
+  partner, so a share in question 4 is a lower bound: they hold up to 35.7% of a heading, the
+  Netherlands' exports of yachts (8903).
+- **A value per kilogram where the value is right and the weight is not.** A quantity can be
+  confidential or estimated, and a weight below 0.5 kg reads 0 (pp. 33-34, 40-41 and 48-49).
+  Machining centres (84571090) imported from Germany at 0.03 EUR per kilogram, against 60.97 from
+  Switzerland, are a ratio these leave open, and the manual does not say which applies.
+- **Why the detail exceeds the totals.** In each month the rows by product add up to 61,919 to
+  68,009 EUR more than the `TOTAL` rows, and only France's intra-EU trade passes the tolerance of
+  gold check 07, 0.01 M EUR, in both flows and every month. No documented cause explains it.
+- **Seasonality, and change over a year.** Seven months of 2026 are loaded, and no figure compares
+  a month with the same month a year before.
+- **Figures that change after publication.** The total for May 2026 moved by 294.2 M EUR between
+  two publications ([The incremental run](docs/engineering-notes.md#the-incremental-run)).
 
-*Queries: Question 1; Question 4; Question 5; Detail against totals, in every month loaded; Detail
-against totals: the groups beyond the tolerance.*
+Queries: [detail against totals](sql/results_queries.sql#L280-L309) · [the groups beyond the tolerance](sql/results_queries.sql#L311-L344)
 
-**The platform**, Databricks Free Edition, as observed in this workspace:
-
-- Serverless compute only, and one SQL warehouse, of size 2X-Small: creating a second is disabled.
-- A compute quota that Databricks does not publish. The most spent in one day was 11.06 DBU,
-  measured in `system.billing.usage`, and compute stayed on.
-- The notebooks run there through Spark Connect, on serverless environment version 6, and the
-  tests run on classic Spark. What runs differently, which the tests cannot see, is in
-  [Silver, gold and the views on serverless](docs/development.md#silver-gold-and-the-views-on-serverless).
-
-Read in the documentation and not observed: exceeding the quota shuts compute down for the rest of
-the day; at most 5 job tasks run at once, which a chain run one task at a time never reaches; one
-pipeline of each type; an account inactive for long can be deleted; no commercial use. The
-documentation also restricts outbound internet access, yet the landing task of the Job
-downloads from `ec.europa.eu` on serverless.
+**The platform**, Databricks Free Edition: serverless only, one SQL warehouse, and an unpublished
+quota, with 11.06 DBU the most spent in one day ([serverless](docs/development.md#databricks-serverless)).
 
 ---
 
