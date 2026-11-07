@@ -408,7 +408,7 @@ archives, in every run and over the list the Volume holds: a code list
 republished under the same name enters with the next run. The nine weigh
 about 6.5 MB. Each holds every version of its codes since it began, `CN.txt`
 from 1988, and the MERGE of the versioned dimensions keeps a version missing
-from its source (Loading the versioned dimensions), so nothing a list held
+from its source (Dimensions with history), so nothing a list held
 before is lost.
 
 | | |
@@ -750,6 +750,9 @@ questions, below).
 | `dim_stat_procedure` | Procedure | `stat_procedure`, `description`, `valid_from`, `valid_to` | `STATISTICAL_PROCEDURES.txt`: 7 codes, one row each |
 | `dim_period` | Month | `period`, `period_date`, `year`, `quarter`, `month` | The months of silver |
 
+- **`dim_country` and `dim_product` keep their history**, one row per version
+  of a code (Dimensions with history, below); the other three are rebuilt
+  with an overwrite.
 - **`is_intra_eu`, not `is_eu_member`.** Zone 1010 holds QR, QV and QY, which
   are not member states. It is the zone check 11 compares `trade_type` with.
 - **`region` is the continent zone**: 5100 Europe, 5200 Africa, 5300 America,
@@ -764,81 +767,6 @@ questions, below).
   no row of its own making. The hierarchy is silver's: an X code stops at its
   own level, and `28XXXXXX` has no `hs4`. The section is the chapter's, from
   `CN_SECTIONS-CHAPTERS.txt`; every chapter of the data has one.
-
-### Versions
-
-A version starts on each date on which a source of the dimension starts a row,
-or on the day after it ends one, and lasts until the day before the next such
-date. Only spans inside a row of the dimension's own list, `PARTNERS_ISO.txt`
-or `CN.txt`, are versions; each takes the attributes valid on its first day.
-The rows of the list stay versions even where their attributes repeat:
-Germany has a row up to 1990 and another from 1991 under the same name, and
-they stay two versions. 48 versions of `dim_country`, none after 2000-01-01,
-repeat the attributes of the one before.
-
-| Dimension | Rows of its list | Versions | What the other sources add |
-|---|---:|---:|---|
-| `dim_country` | 342 | 390 | Zone 1010 and the euro area, 37 versions in 26 codes. The continent zones, 11 versions in 10 codes, all before 1999: in BF, BJ, CV, DJ, KH, VU and ZW the continent row starts years after the code, and in CD, CG, KH and MM it is split on a date of its own |
-| `dim_product` | 30,984 | 30,985 | `9301S891`, split on 2002-01-01, when the description of its heading 9301 changes |
-
-| `country_code` | `valid_from` | `valid_to` | `is_intra_eu` | `is_euro_area` |
-|---|---|---|---|---|
-| BG | 1976-01-01 | 2006-12-31 | false | false |
-| BG | 2007-01-01 | 2025-12-31 | true | false |
-| BG | 2026-01-01 | 2500-12-31 | true | true |
-
-- Between 2025-01-01 and 2026-12-31 every country code has a single version,
-  except Bulgaria, which joins the euro area on 2026-01-01.
-- **A fact row takes the version that covers its `period_date`**, through the
-  pairs of each code with each `period_date` present, which match a version at
-  most once. Gold check 03 finds every reporter, partner and product of the
-  seven months resolved to exactly one version, so the two facts keep their
-  35,164,358 and 89,092 rows joined to all their dimensions.
-- **The keys are `xxhash64(code, valid_from)`.** A rebuilt dimension keeps its
-  keys, so a fact rebuilt for one month still joins it. The 390 and 30,985
-  keys have no collision, and `(code, valid_from)` is unique in both.
-
-### Loading the versioned dimensions
-
-`dim_country` and `dim_product` load with a MERGE on `(code, valid_from)`,
-written by hand. A version whose end or attributes changed is updated, and a
-new one is inserted. A version that is missing from the source is counted, not
-deleted. Before merging, the source has to be unique on `(code, valid_from)`.
-Over a key that repeats in the source, Delta 4.4 stops the MERGE when the
-table holds the key (`multipleSourceRowMatchingTargetRowInMergeException`),
-and inserts it twice, without an error, when it does not: the table would hold
-two versions of one code and day, and every fact row of that code would be
-joined twice. `merge_dimension()` refuses such a source before touching the
-table. A table
-that does not exist yet is created empty, so the first load goes through the
-MERGE too. `dim_flow`, `dim_stat_procedure` and `dim_period` are rebuilt with
-an overwrite.
-
-The changes of January 2026 went through the MERGE of the real tables while
-the model was developed: the two dimensions written as they stood on
-2025-12-31, with every version started by then and any version still open
-that day taken as current, and today's merged into them. In this repository,
-two tests run the same MERGE over real lines of the code lists, with the
-dimension of 2025-12-31 built by `as_of()`, a helper of `tests/test_gold.py`
-(Tests and lint). Today's dimension, merged into the one of 2025-12-31:
-
-| Dimension | On 2025-12-31 | Updated | Inserted | Missing | After |
-|---|---:|---:|---:|---:|---:|
-| `dim_country` | 389 | 1 | 1 | 0 | 390 |
-| `dim_product` | 30,958 | 14 | 27 | 0 | 30,985 |
-
-- In `dim_country`, Bulgaria's version from 2007 closes on 2025-12-31, and one
-  from 2026-01-01 in the euro area is inserted.
-- In `dim_product`, the 14 codes closed on 2025-12-31 are updated, and the 27
-  opened on 2026-01-01 are inserted, among them lithium nickel manganese cobalt
-  oxides, wind turbine blades and inverters with maximum power point tracking.
-- **The same MERGE run again changes nothing, and on open-source Delta still
-  rewrites the table.** It updates and inserts 0, but commits a version that
-  copies every row, 390 and 30,985, into new files. A MERGE with a matched
-  clause rewrites each file that holds a matched row, even when the clause's
-  condition holds for none of them. On Databricks serverless the same second
-  run commits a version and writes nothing, in both dimensions: 0 rows copied
-  and 0 files added. Its MERGE is Databricks' own, not open-source Delta's.
 
 ### What each business question reads
 
@@ -1083,7 +1011,7 @@ and 0 for any check it does not name.
   repeated this one.
 - **Checks 05 and 06 read the dimension tables as merged**, with every version
   an earlier MERGE left, since a version missing from the source is kept
-  (Loading the versioned dimensions). Built from the code lists, versions run
+  (Dimensions with history). Built from the code lists, versions run
   between consecutive dates and cannot overlap. In the table they can: a row
   of a code list that changed its start would be inserted as a new version
   next to the old one, and check 06 counts the old one.
@@ -1126,6 +1054,92 @@ found exactly its expected failures: 16 results, 1 with failures.
 - With the expectations of check 07 and of check 06 changed, a run wrote its
   results and stopped naming both: the file for check 07, and the two versioned
   dimensions, without a file, for check 06.
+
+## Dimensions with history (SCD type 2)
+
+<details open>
+<summary><b><code>dim_country</code> and <code>dim_product</code> keep one row
+per version of a code, 390 and 30,985, and a fact row joins the version valid
+in its month.</b> Bulgaria's trade of July 2026 is euro-area trade, and its
+trade of 2025 is not.</summary>
+
+A slowly changing dimension of type 2 keeps a row for every version of a
+member, with the dates it was valid, instead of overwriting the old values.
+Usually the load makes the versions by comparing the source with the table.
+Here the source already holds the history: Eurostat's code lists give each row
+with its validity dates, so a dimension rebuilt from them gives the same rows.
+
+Bulgaria has one row in `PARTNERS_ISO.txt`, from 1976. It enters the EU zone
+of `GEOZONES-PARTNERS_ISO.txt` on 2007-01-01, and the euro area on 2026-01-01,
+by the seed `reference/euro_area_members.csv`. Each date starts a version:
+
+| `country_key` | `valid_from` | `valid_to` | `is_intra_eu` | `is_euro_area` | `is_current` |
+|---|---|---|---|---|---|
+| 866757845668845418 | 1976-01-01 | 2006-12-31 | false | false | false |
+| 6262974360465178804 | 2007-01-01 | 2025-12-31 | true | false | false |
+| 6769583107433018351 | 2026-01-01 | 2500-12-31 | true | true | true |
+
+Bulgaria's exports of silver waste and scrap (`71129900`) to Germany in July
+2026, 88,579,115 EUR, take the third version. Joined on the code alone they
+would take all three: the month's 103,180 rows of Bulgaria would be 309,540.
+
+<details>
+<summary>A version is a span between the dates of any source, inside a row of
+the code's own list, and its key, <code>xxhash64(code, valid_from)</code>,
+never moves.</summary>
+
+A version starts where a source opens a row, or the day after one closes it,
+and ends the day before the next such date. Only spans inside a row of
+`PARTNERS_ISO.txt` or `CN.txt` count, each with the attributes of its first
+day. Germany's two rows there, up to 1990 and from 1991, stay two versions.
+
+| Dimension | Rows of its list | Versions | What the other sources add |
+|---|---:|---:|---|
+| `dim_country` | 342 | 390 | The EU zone and the euro area, 37 versions in 26 codes; the continent zones, 11 in 10 codes, all before 1999 |
+| `dim_product` | 30,984 | 30,985 | `9301S891`, split on 2002-01-01, when its heading 9301 starts a new row |
+
+- **A product code is never changed**: the Combined Nomenclature closes it and
+  opens another, as `28419085` on 2025-12-31 and `28419040`, lithium nickel
+  manganese cobalt oxides, on 2026-01-01.
+- **A version keeps its key when a later load closes it**, as Bulgaria's from
+  2007 keeps 6262974360465178804. A sequential number would not: inserting
+  Bulgaria's version of 2026 moves 358 of the 389 keys of 2025-12-31, and the
+  facts already written would point to other countries. No key collides.
+- Gold check 03 finds every fact row of the seven months joined to exactly one
+  version of each dimension (The checks of gold).
+
+</details>
+
+<details>
+<summary>The load is a MERGE written by hand that updates and inserts, and
+never deletes: 2026 brought 1 and 1 in <code>dim_country</code>, 14 and 27 in
+<code>dim_product</code>.</summary>
+
+`merge_dimension()` of `src/gold.py` matches the source to the table on
+`(code, valid_from)`: a version whose end or attributes changed is updated, a
+new one inserted, and one missing from the source counted, not deleted, so a
+month already loaded keeps its version. The dimension as it stood on
+2025-12-31, and today's merged into it:
+
+| Dimension | On 2025-12-31 | Updated | Inserted | Missing | After |
+|---|---:|---:|---:|---:|---:|
+| `dim_country` | 389 | 1 | 1 | 0 | 390 |
+| `dim_product` | 30,958 | 14 | 27 | 0 | 30,985 |
+
+- Bulgaria's version from 2007 is updated, its `valid_to` from 2500-12-31 to
+  2025-12-31, and its version of 2026 inserted; so are the 14 product codes
+  closed and the 27 opened with 2026.
+- **A repeated `(code, valid_from)` in the source is refused before the table
+  is touched.** Delta 4.4 stops a MERGE over a repeated key the table holds,
+  and inserts one it does not hold twice, without an error, which would join
+  every fact row of that code twice.
+- **Run again, the same MERGE changes nothing.** Open-source Delta still
+  rewrites each file that holds a matched row; Databricks serverless writes
+  nothing.
+
+</details>
+
+</details>
 
 ## The incremental run
 
@@ -1303,8 +1317,8 @@ classic Spark. What runs differently there:
   prefix, though the documentation asks for one.
 - **The MERGE goes through `DeltaTable` on Spark Connect**, and its `execute()`
   returns the counts of updated and inserted rows, as on classic Spark. Run
-  again with nothing to change, it writes no file (Loading the versioned
-  dimensions). `spark.catalog.tableExists()` takes the name of three parts.
+  again with nothing to change, it writes no file (Dimensions with history).
+  `spark.catalog.tableExists()` takes the name of three parts.
 - **A view resolves its tables from any schema.** Created after `USE
   eu_trade.gold`, `eu_trade.gold.vw_partner_ranking` read from the default
   schema returns its rows.

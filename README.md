@@ -260,7 +260,7 @@ updated and one inserted, Bulgaria's, and `dim_product` 14 updated, the codes cl
 2025-12-31, and 27 inserted, opened on 2026-01-01, lithium nickel manganese cobalt oxides and
 lithium iron phosphate among them. Two tests run the same MERGE over real lines of the code
 lists
-([Loading the versioned dimensions](docs/engineering-notes.md#loading-the-versioned-dimensions)).
+([Dimensions with history (SCD type 2)](docs/engineering-notes.md#dimensions-with-history-scd-type-2)).
 
 Every column, with its type and where it comes from, is in
 [`docs/data_dictionary.md`](docs/data_dictionary.md). Each modelling choice, with the alternatives
