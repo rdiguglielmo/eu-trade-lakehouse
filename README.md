@@ -362,7 +362,7 @@ python -m venv .venv
 
 `requirements.txt` pins every package, dependencies included, at one version: those of the
 landing, the Databricks SDK of the deploy, and Spark and Delta as the engine of the tests
-([Environment](docs/engineering-notes.md#environment)). `pyproject.toml` holds only the settings
+([Environment](docs/development.md#environment)). `pyproject.toml` holds only the settings
 of pytest and ruff.
 
 **2. Prepare the workspace.** On Databricks Free Edition:
@@ -402,8 +402,8 @@ the answers of [`sql/analysis_queries.sql`](sql/analysis_queries.sql).
 245 tests. The 115 not marked `spark` start no JVM, and run wherever the lock is installed. The
 130 marked `spark` start a local Spark with Delta, which needs a JDK 17 and `JAVA_HOME`, and on
 Windows can hang at the start of its first session. The CI runs ruff, mypy and the whole suite on
-every push, on Ubuntu, in 8 to 10 minutes
-([Tests and lint](docs/engineering-notes.md#tests-and-lint)).
+every push, on Ubuntu, in 7 to 11 minutes
+([Tests and lint](docs/development.md#tests-and-lint)).
 
 ## Results
 
@@ -591,8 +591,8 @@ against totals: the groups beyond the tolerance.*
 - A compute quota that Databricks does not publish. The most spent in one day was 11.06 DBU,
   measured in `system.billing.usage`, and compute stayed on.
 - The notebooks run there through Spark Connect, on serverless environment version 6, and the
-  tests run on classic Spark. What runs differently, which the tests cannot see, is in the notes,
-  [Silver, gold and the views on serverless](docs/engineering-notes.md#silver-gold-and-the-views-on-serverless).
+  tests run on classic Spark. What runs differently, which the tests cannot see, is in
+  [Silver, gold and the views on serverless](docs/development.md#silver-gold-and-the-views-on-serverless).
 
 Read in the documentation and not observed: exceeding the quota shuts compute down for the rest of
 the day; at most 5 job tasks run at once, which a chain run one task at a time never reaches; one
