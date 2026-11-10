@@ -196,8 +196,7 @@ On Windows the first Spark session of the tests can hang while the executor,
 which runs in the same process, downloads the Delta jars from the driver. The
 CI runs them on Ubuntu.
 
-<details>
-<summary>What each of the 13 test files covers.</summary>
+**What each of the 13 test files covers.**
 
 | File | What it covers |
 |---|---|
@@ -214,8 +213,6 @@ CI runs them on Ubuntu.
 | `tests/test_gold_checks.py` | The quality checks of gold on a local Spark, over real rows of the landed files and real lines of the code lists, built into facts and dimensions by `src/gold.py`. Every check over clean inputs fails nothing. Each check, alone, counts a fact or a dimension broken on purpose: a fact row twice or missing; a code without a version in its month; a flow, a version or a month that a dimension lacks, and a version it holds twice; a value a tenth of a cent off; a key twice in three ways; a version one day over the next; a group within the tolerance, exactly at it, beyond it, and without its TOTAL row; a version started after the month or ended before it once the facts were built, a product closed before the month, and check 08 reading every month of the facts |
 | `tests/test_gold_expectations.py` | The expected failures of gold, and their comparison by the rule of silver: check 07 at 2 in every month, check 08 at 0, a check of a dimension expected at 0 without a file, a dimension off its expectation named without a file, a check without a result, and a name of silver that is not a check of gold. Starts no JVM |
 | `tests/test_gold_views.py` | The views of the business questions on a local Spark, over real rows of the landed files and real lines of the code lists, built into facts and dimensions by `src/gold.py` and registered as temporary views. The six views of the file; a partner's procedures in one row; the Q codes in the flow's total and without a rank; two partners of one value sharing a rank; the rank of the calendar month before, and none where that month is not loaded; exports minus imports by chapter, an X code in its chapter; the section of the chapter, not of the row; QY intra-EU and QZ extra-EU; no share without a value; the largest partner of a heading a country, its share over the whole flow with the Q codes, and none where every partner is a Q code or the heading has no value; X codes of a chapter out of the headings and in the reporter's flow; a tie naming the lower code; reporters summed into one row, and the value per kilogram dividing sums; question 5 reading only eight-digit codes with a partner that is a country, a value and a weight; every view keeping the value of the fact rows it reads, once per grain |
-
-</details>
 
 The CSV files of the tests are written by the tests, from `EXPECTED_HEADER` and
 three rows of `full_v2_202605.csv` as published on 2026-09-15, with one defect
@@ -238,8 +235,7 @@ The tests were shown able to fail. With one fault injected at a time, exactly
 the tests that cover it failed, and no other: `enforceSchema` set to true in
 the bronze reader, and the 40 faults below.
 
-<details>
-<summary>The 40 faults, each with the tests it failed.</summary>
+**The 40 faults, each with the tests it failed.**
 
 | Fault | Failed |
 |---|---|
@@ -283,8 +279,6 @@ the bronze reader, and the 40 faults below.
 | The value per kilogram by reporter too | Reporters summed, and every view, through its grain |
 | X codes, partners that are not countries, or rows without a weight in question 5 | Question 5 reading only eight-digit codes with a country, a value and a weight, and every view keeping the value of the rows it reads |
 | Rows without a value in question 5 | Question 5 reading only eight-digit codes with a country, a value and a weight, alone: a value of 0 adds nothing to the value of the rows it reads |
-
-</details>
 
 The tests of the landing, of the window and of the definition of the Job were
 not run against injected faults.

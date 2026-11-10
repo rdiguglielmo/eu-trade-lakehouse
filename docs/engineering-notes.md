@@ -50,9 +50,8 @@ Eurostat publishes with the next monthly release (manual, pp. 56-57): 202608,
 as listed on 2026-10-20, held that of 9 of the 27 reporters. An open window
 stops at the month before the last one listed (The incremental run).
 
-<details>
-<summary>Every file carries its own totals as rows, <code>PRODUCT_NC =
-TOTAL</code>, so a sum over the file counts every euro twice.</summary>
+**Every file carries its own totals as rows, `PRODUCT_NC =
+TOTAL`, so a sum over the file counts every euro twice.**
 
 One row per reporter, partner, flow and statistical procedure sums the other
 rows of that combination: in July 2026, 12,783 `TOTAL` rows add up to
@@ -61,12 +60,9 @@ every classification column but `PRODUCT_SECTION`, which reads `TO`, so a
 filter on the section lets them through: the filter is `PRODUCT_NC = 'TOTAL'`,
 and silver gives them a table of their own (Silver).
 
-</details>
-
-<details>
-<summary>The <code>TOTAL</code> rows reproduce the figures Eurostat publishes,
+**The `TOTAL` rows reproduce the figures Eurostat publishes,
 within their rounding of 0.05 M EUR, against the same publication
-only.</summary>
+only.**
 
 Eurostat's monthly table `ext_st_eu27_2020sitc` (`sitc06=TOTAL`,
 `indic_et=TRD_VAL`, `geo=EU27_2020`, million EUR) is compiled from the same
@@ -87,8 +83,6 @@ GB is `UK`. July 2026, both from the publication of 2026-10-16:
 19.8 to 248.5 M EUR. So check 10 compares each file with a copy of the figures
 saved when its month lands (Landing and the manifest), never with the live
 table.
-
-</details>
 
 <p align="right"><a href="#engineering-notes">Back to top</a></p>
 
@@ -185,9 +179,8 @@ Each holds every version of its codes, and the MERGE of the versioned
 dimensions keeps a version its list no longer holds (Dimensions with history).
 Their layout is in the [data dictionary](data_dictionary.md#code-lists).
 
-<details>
-<summary>Each month goes through the driver's disk, since a Volume does not
-take the random writes of an extraction.</summary>
+**Each month goes through the driver's disk, since a Volume does not
+take the random writes of an extraction.**
 
 `land_month()` downloads the archive to a temporary folder on the driver,
 extracts it there, and only then copies the CSV into the Volume with
@@ -207,8 +200,6 @@ refused; the months of 2026 unpack to 400 to 423 MB.
 The landing creates the schema `landing` and the Volume `comext` if they are
 missing, and never the catalog, which on Free Edition is a Standard catalog
 with default storage, created in Catalog Explorer.
-
-</details>
 
 <p align="right"><a href="#engineering-notes">Back to top</a></p>
 
@@ -313,11 +304,10 @@ adding them. Then it checks that the bronze rows of each file are its detail
 and its totals, each in one batch, and stops otherwise; no test covers that
 check.
 
-<details>
-<summary><code>split_bronze()</code> types and names every column in one
-<code>select</code>, then splits the rows in two: three rows of Austria's
+**`split_bronze()` types and names every column in one
+`select`, then splits the rows in two: three rows of Austria's
 exports to Switzerland in July 2026 become two rows of detail and one of
-totals.</summary>
+totals.**
 
 The three rows in bronze, all of `REPORTER` AT, `PARTNER` CH, `FLOW` 2 and
 `STAT_PROCEDURE` 1: the `TOTAL` row, and the eight-digit code and the X code
@@ -345,12 +335,9 @@ July 2026, `is_x_code` marks 78,498 rows; `hs6` is NULL in 50,629, `hs4` in
 the rows that read `NO_SU`. The totals add up by trade type and flow to the
 sums that reconcile with the published figures (The source).
 
-</details>
-
-<details>
-<summary>Codes stay text, values are <code>DECIMAL(18,3)</code> and
-<code>NO_SU</code> becomes NULL; Spark itself has two ways to break this
-without an error.</summary>
+**Codes stay text, values are `DECIMAL(18,3)` and
+`NO_SU` becomes NULL; Spark itself has two ways to break this
+without an error.**
 
 | Column | Rule |
 |---|---|
@@ -369,8 +356,6 @@ without an error.</summary>
   which is wanted, but a fourth decimal would be rounded to the scale without
   a warning: `1.2345` becomes `1.235`. Check 12 compares each value cast to the
   silver type with the same value cast without loss.
-
-</details>
 
 <p align="right"><a href="#engineering-notes">Back to top</a></p>
 
@@ -420,9 +405,8 @@ already versions and the landing replaces whole on every run. `dim_country`
 and `dim_product` keep a row per version and load by MERGE (Dimensions with
 history, below); the other three are rebuilt with an overwrite.
 
-<details>
-<summary>Five places where a column of gold reads as something
-else.</summary>
+**Five places where a column of gold reads as something
+else.**
 
 - **`is_intra_eu`, not `is_eu_member`.** Zone 1010 holds the member states and
   QR, QV and QY, which are not states. Check 11 compares `trade_type` with it.
@@ -441,8 +425,6 @@ else.</summary>
 The five parallel classifications stay on the fact row, as codes, since an X
 code can take several (Silver). No value per kilogram is stored: a ratio per
 row does not add up, and question 5 divides sums.
-
-</details>
 
 <p align="right"><a href="#engineering-notes">Back to top</a></p>
 
@@ -480,10 +462,9 @@ Bulgaria's exports of silver waste and scrap (`71129900`) to Germany in July
 2026, 88,579,115 EUR, take the third version. Joined on the code alone they
 would take all three: the month's 103,180 rows of Bulgaria would be 309,540.
 
-<details>
-<summary>A version is a span between the dates of any source, inside a row of
-the code's own list, and its key, <code>xxhash64(code, valid_from)</code>,
-never moves.</summary>
+**A version is a span between the dates of any source, inside a row of
+the code's own list, and its key, `xxhash64(code, valid_from)`,
+never moves.**
 
 A version starts where a source opens a row, or the day after one closes it,
 and ends the day before the next such date. Only spans inside a row of
@@ -505,12 +486,9 @@ day. Germany's two rows there, up to 1990 and from 1991, stay two versions.
 - Gold check 03 finds every fact row of the seven months joined to exactly one
   version of each dimension (Quality checks).
 
-</details>
-
-<details>
-<summary>The load is a MERGE written by hand that updates and inserts, and
-never deletes: 2026 brought 1 and 1 in <code>dim_country</code>, 14 and 27 in
-<code>dim_product</code>.</summary>
+**The load is a MERGE written by hand that updates and inserts, and
+never deletes: 2026 brought 1 and 1 in `dim_country`, 14 and 27 in
+`dim_product`.**
 
 `merge_dimension()` of `src/gold.py` matches the source to the table on
 `(code, valid_from)`: a version whose end or attributes changed is updated, a
@@ -533,8 +511,6 @@ month already loaded keeps its version. The dimension as it stood on
 - **Run again, the same MERGE changes nothing.** Open-source Delta still
   rewrites each file that holds a matched row; Databricks serverless writes
   nothing.
-
-</details>
 
 <p align="right"><a href="#engineering-notes">Back to top</a></p>
 
@@ -581,9 +557,8 @@ the counts behind them in `sql/results_queries.sql`, which no notebook runs.
   4,958,874 rows of eight-digit codes of July 2026, 94.19%, with 97.90% of
   their value. Below 10 M EUR a few kilograms put noise at the top.
 
-<details>
-<summary>Six rules of the SQL, each of which would change an answer if it
-were written otherwise.</summary>
+**Six rules of the SQL, each of which would change an answer if it
+were written otherwise.**
 
 - **`RANK()`, so tied values share a rank**: 29 rows of July 2026. The 156
   rows of Q codes take no rank.
@@ -612,12 +587,9 @@ The views name their tables without a schema, and the notebook sets the gold
 schema with `USE` first. The floors of questions 4 and 5 live in their
 queries, so the views keep every heading and every partner.
 
-</details>
-
-<details>
-<summary>The notebook writes each view's fact rows again, apart from the view,
+**The notebook writes each view's fact rows again, apart from the view,
 and compares the two in every month: in July 2026 the six views keep every
-euro of the rows they read.</summary>
+euro of the rows they read.**
 
 `src/gold_views.py` holds the rows each view reads, so a view that loses,
 adds or splits rows, or repeats a value of its grain, stops the notebook even
@@ -627,8 +599,6 @@ EUR, those over the whole detail 1,224,894,939,767.848, question 4
 1,192,712,668,368.800, the detail without the X codes of a chapter, and
 question 5 1,164,149,183,748.356. The six views hold 9,566, 2,618, 54, 5,194,
 59,883 and 923,569 rows.
-
-</details>
 
 <p align="right"><a href="#engineering-notes">Back to top</a></p>
 
@@ -705,9 +675,8 @@ The seven full months, all from the publication of 2026-10-16:
 one row off, up and then down, each run wrote its results and stopped, naming
 the check, the table, the file and both counts.
 
-<details>
-<summary>Why each check reads what it reads, and what its expectation
-allows.</summary>
+**Why each check reads what it reads, and what its expectation
+allows.**
 
 - **06a expects 5.0% to 6.0%**, a margin around the 5.312% to 5.586% of the
   six months it was set on; 202607 then found 5.622%.
@@ -734,12 +703,9 @@ allows.</summary>
   split on the tab, since 5,078 lines of `CN.txt` hold a double quote, and
   every rule is a column expression.
 
-</details>
-
-<details>
-<summary>The rows by product exceed the <code>TOTAL</code> rows by 61,919 to
+**The rows by product exceed the `TOTAL` rows by 61,919 to
 68,009 EUR a month, and only France's intra-EU trade passes the tolerance of
-gold 07, with no documented cause.</summary>
+gold 07, with no documented cause.**
 
 Per reporter, trade type, flow and procedure, summed over every partner and
 product, the detail is above the totals in France's intra-EU imports by
@@ -750,8 +716,6 @@ files precalculate (p. 83). The one exception it describes, confidential
 trade kept in a country's total but allocated to no chapter (p. 42), would
 put the totals above the detail. The sums come from the gold facts through
 `sql/results_queries.sql`.
-
-</details>
 
 <p align="right"><a href="#engineering-notes">Back to top</a></p>
 
@@ -793,10 +757,9 @@ The views notebook reads every month and no watermark. Gold check 08 belongs
 here: the facts of the months not processed were built against an earlier
 MERGE (Quality checks).
 
-<details>
-<summary>The window runs from <code>start_period</code> to
-<code>end_period</code>, and with <code>end_period</code> empty the landing
-stops at the month before the last one listed.</summary>
+**The window runs from `start_period` to
+`end_period`, and with `end_period` empty the landing
+stops at the month before the last one listed.**
 
 A run takes its months from two job parameters, `start_period`, `202601` by
 default, and `end_period`, empty, as `YYYYMM` (The Job). They reach notebooks
@@ -818,11 +781,8 @@ landing task installs. An open window lets a month enter on its own: the next
 release completes the newest month and lists a newer one, and the landing
 lands the first.
 
-</details>
-
-<details>
-<summary>Three runs on serverless over the full months, and one of the Job,
-each wrote what was pending and left the rest as it was.</summary>
+**Three runs on serverless over the full months, and one of the Job,
+each wrote what was pending and left the rest as it was.**
 
 | Run | What it wrote |
 |---|---|
@@ -832,8 +792,6 @@ each wrote what was pending and left the rest as it was.</summary>
 
 The Job of this repository then landed 202607 again from Eurostat and took it
 through every layer, with the same numbers and the same 42 lines (The Job).
-
-</details>
 
 <p align="right"><a href="#engineering-notes">Back to top</a></p>
 
