@@ -1,6 +1,7 @@
 -- The answer to each business question for the latest month loaded, from the
--- views of gold_views.sql. Each query opens with its question. Values in
--- million EUR and shares in percent, both to one decimal, rounded half up.
+-- views of gold_views.sql. The Job's last task, notebook 06_gold_views, runs
+-- every query at the end of each run. Each query opens with its question.
+-- Values in million EUR and shares in percent, to one decimal, rounded half up.
 
 -- Question 1: the three main partners of each reporter and flow.
 -- With their rank the month before and in the first month loaded, which is

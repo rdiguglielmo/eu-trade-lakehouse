@@ -1,8 +1,8 @@
 -- The queries behind the README's Results and Limitations that are not the
 -- answer of a question itself: counts over an answer, and the rows behind a
--- case it names. They read the views of gold_views.sql and the facts, in the
--- gold schema, for the latest month loaded unless they say otherwise. Values
--- in million EUR and shares in percent, both to one decimal, rounded half up.
+-- case it names, for the latest month loaded unless they say otherwise. No
+-- task runs them: each runs by hand in a notebook, after USE eu_trade.gold.
+-- Values in million EUR and shares in percent, to one decimal, rounded half up.
 
 -- Question 1, how the ranking changed: the top three partners of each
 -- reporter and flow in the latest month, by their rank in the first month

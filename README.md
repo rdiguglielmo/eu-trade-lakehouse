@@ -54,15 +54,31 @@ Question 4 is asked by product heading: Germany's largest import partner holds 1
 imports, while China holds 44.0% of its imports of batteries. Question 5 divides sums instead of
 averaging ratios. The answers for July 2026 are in [Results](#results).
 
+**From a question to its answer**, with question 1:
+
+1. **The view.** [`sql/gold_views.sql`](sql/gold_views.sql) defines `vw_partner_ranking`: each
+   partner of each reporter, flow and month, with its rank and its rank the month before. A view
+   stores no rows; it reads the facts each time it is queried.
+2. **Its creation.** [`src/gold_views.py`](src/gold_views.py) reads that file, splits it into its
+   six `CREATE VIEW` statements and runs each one. The tests call the same function over test data.
+3. **The run.** The last task of the Job, [`06_gold_views`](notebooks/06_gold_views.py), creates
+   the six views in the gold schema and stops the run if one loses, adds or splits the value of
+   the fact rows it reads. Then it runs each query of
+   [`sql/analysis_queries.sql`](sql/analysis_queries.sql), for question 1 the three main partners
+   of the latest month, and shows the answers in the output of its run.
+4. **The figures of Results.** A count over an answer, such as how many of the top three keep their
+   January rank, comes from [`sql/results_queries.sql`](sql/results_queries.sql). No task runs
+   that file: a query runs by hand in a notebook, after `USE eu_trade.gold`.
+
 <p align="right"><a href="#eu-trade-lakehouse">Back to top</a></p>
 
 ## Dataset
 
 **Eurostat COMEXT, international trade in goods, detailed data by CN8**, from the
 [bulk download facility](https://ec.europa.eu/eurostat/api/dissemination/files/?dir=comext%2FCOMEXT_DATA%2FPRODUCTS):
-one 7z archive per month, 45 to 48 MB, holding one CSV of 18 columns, 400 to 423 MB extracted.
-Loaded here: January to July 2026, from the publication of 2026-10-16, 4,877,993 to 5,149,512 rows
-a month. Several properties of the data give a wrong number without anything failing:
+one 7z archive per month, about 46 MB, holding one CSV of 18 columns, about 410 MB extracted.
+Loaded here: January to July 2026, from the publication of 2026-10-16, about 5 million rows a
+month. Several properties of the data give a wrong number without anything failing:
 
 | What is in the data | Measured | What the pipeline does |
 |---|---|---|
@@ -393,15 +409,8 @@ all 245 on every push, on Ubuntu, in 7 to 11 minutes ([Tests and lint](docs/deve
 
 What the data says for July 2026 (202607), the latest of the seven months loaded. Every figure
 comes from a query, linked below each section. Values are in million EUR and shares in percent.
-
-Source: Eurostat, international trade in goods, detailed data by CN8 (Comext bulk download),
-publication of 2026-10-16. Eurostat's
-[copyright notice](https://ec.europa.eu/eurostat/web/main/help/copyright-notice) authorises reuse
-with the source acknowledged, under the Commission Decision of 12 December 2011 (2011/833/EU); trade
-declared by Austria at eight digits may not be sold. The figures here are this project's
-transformation of the data, and Eurostat bears no responsibility for them. The pages cited as the
-manual are those of Eurostat's *User manual on international trade in goods statistics*, 2026
-edition.
+The pages cited as the manual are those of Eurostat's *User manual on international trade in goods
+statistics*, 2026 edition.
 
 ### Question 1: Germany is the first partner of 13 reporters' imports and 15 reporters' exports
 
@@ -410,7 +419,7 @@ Germany imports first from the Netherlands, 17,621.3 M EUR or 14.5% of its impor
 Netherlands, 7.0%: the same three, in the same order, as in January. Over the seven months, 113 of
 the 162 top-three positions keep their January rank, and 20 go to partners new to the top three.
 
-Queries: [the answer](sql/analysis_queries.sql#L5-L35) · [how the ranking changed](sql/results_queries.sql#L7-L39) · [the first partners](sql/results_queries.sql#L41-L52)
+Queries: [the answer](sql/analysis_queries.sql#L6-L36) · [how the ranking changed](sql/results_queries.sql#L7-L39) · [the first partners](sql/results_queries.sql#L41-L52)
 
 ### Question 2: 10 of the 27 reporters are in surplus, and mineral fuels are the largest deficit of 18
 
@@ -419,7 +428,7 @@ mineral fuels (chapter 27), -5,435.6. Ireland's comes first from pharmaceutical 
 30), +4,688.6. France has the largest deficit, -7,197.2, though aircraft (chapter 88) give it a
 surplus of +2,068.3.
 
-Queries: [the answer](sql/analysis_queries.sql#L37-L72) · [surplus and deficit](sql/results_queries.sql#L54-L86)
+Queries: [the answer](sql/analysis_queries.sql#L38-L73) · [surplus and deficit](sql/results_queries.sql#L54-L86)
 
 ### Question 3: the intra-EU share of imports runs from Slovenia's 33.4% to Luxembourg's 87.9%
 
@@ -427,7 +436,7 @@ Germany's is 64.6%, and Cyprus sends the smallest share of its exports to the EU
 chapter, over every reporter, the lowest intra-EU shares of imports are works of art (chapter 97),
 12.2%, and ships (89), 28.2%; the highest is cork (45), 95.2%.
 
-Queries: [by country](sql/analysis_queries.sql#L74-L85) · [by product](sql/analysis_queries.sql#L87-L108)
+Queries: [by country](sql/analysis_queries.sql#L75-L86) · [by product](sql/analysis_queries.sql#L88-L109)
 
 ### Question 4: seven headings come from, or go to, a single partner
 
@@ -437,7 +446,7 @@ on refined petroleum from the Netherlands, 64.7%, batteries from China, 44.0%, a
 from the United States, 39.6%. Slovenia's medicaments (3004) are 38.4% of its exports, and 67.7%
 of them go to Switzerland, against 71.2% to 87.8% in the six months before.
 
-Queries: [the answer](sql/analysis_queries.sql#L110-L145) · [Slovenia's medicaments, month by month](sql/results_queries.sql#L251-L264)
+Queries: [the answer](sql/analysis_queries.sql#L111-L146) · [Slovenia's medicaments, month by month](sql/results_queries.sql#L251-L264)
 
 ### Question 5: 275 of 2,749 products and flows have a dearest partner at ten times the cheapest or more
 
@@ -456,7 +465,7 @@ and the manual explains neither:
 Nam's 3.50 EUR per kilogram to Kenya's 6.86, and the code holds every coffee neither roasted nor
 decaffeinated. A third pattern is in [Limitations](#limitations).
 
-Queries: [the answer](sql/analysis_queries.sql#L147-L193) · [the spread of the gaps](sql/results_queries.sql#L88-L112) · [coffee within one code](sql/results_queries.sql#L266-L278)
+Queries: [the answer](sql/analysis_queries.sql#L148-L194) · [the spread of the gaps](sql/results_queries.sql#L88-L112) · [coffee within one code](sql/results_queries.sql#L266-L278)
 
 ### Processing trade: 98.5% of Slovenia's imports from Switzerland are for inward processing
 
@@ -490,7 +499,7 @@ Queries: [both cases, by heading and procedure](sql/results_queries.sql#L175-L24
 - **A way to run the pipeline locally.** The logic was developed on a local Spark 4.2 with Delta
   4.4, to spend no compute quota; here a local Spark is only the engine of the tests.
 - **The data, and an export of gold.** The Job lands the files in the Volume and rebuilds every
-  table from them; the detail fact alone holds 35,164,358 rows.
+  table from them; the detail fact alone holds about 35 million rows.
 - **The Databricks workspace.** A Free Edition workspace can be deleted after a long inactivity;
   the Job, the Volume and every table are rebuilt from this repository.
 - **The exploratory notebooks** that measured the source: every measurement a decision rests on is
@@ -534,5 +543,7 @@ quota, with 11.06 DBU the most spent in one day ([serverless](docs/development.m
 
 Part of a four-project data portfolio: [github.com/rdiguglielmo](https://github.com/rdiguglielmo)
 
-Licensed under the [MIT License](LICENSE). The data is Eurostat's, reused under its copyright
-notice (see [Results](#results)).
+Licensed under the [MIT License](LICENSE). Data: Eurostat, international trade in goods, detailed
+data by CN8 (Comext bulk download), publication of 2026-10-16, reused under its
+[copyright notice](https://ec.europa.eu/eurostat/web/main/help/copyright-notice). The figures are
+this project's transformation of the data, and Eurostat bears no responsibility for them.
