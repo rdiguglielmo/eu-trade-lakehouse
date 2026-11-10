@@ -4,6 +4,13 @@ How the repository is installed, deployed and tested outside Databricks, and
 what runs differently on its serverless compute. How the pipeline works is in
 [`engineering-notes.md`](engineering-notes.md).
 
+## Contents
+
+- [Environment](#environment)
+- [Deploying the Job](#deploying-the-job)
+- [Databricks serverless](#databricks-serverless)
+- [Tests and lint](#tests-and-lint)
+
 ## Environment
 
 The pipeline runs on Databricks. What runs outside it, the deploy of the Job,
@@ -42,6 +49,8 @@ this repository: here Spark runs locally only as the engine of the tests (Tests
 and lint). Over the seven full months of 202601 to 202607, the views notebook
 printed the same 42 lines on serverless as on the local Spark, byte for byte.
 
+<p align="right"><a href="#development">Back to top</a></p>
+
 ## Deploying the Job
 
 `src/deploy_job.py` creates the Job from `jobs/trade_pipeline_job.json`, or
@@ -60,6 +69,8 @@ empty default of `end_period` included, and the server's own defaults besides:
 `queue` enabled, `format`, timeouts of 0, empty notifications, and `run_if` and
 `disabled` on each task. Run again, the script replaced the settings and left
 one Job of that name.
+
+<p align="right"><a href="#development">Back to top</a></p>
 
 ## Databricks serverless
 
@@ -137,6 +148,8 @@ classic Spark. What runs differently there:
 - **A view resolves its tables from any schema.** Created after `USE
   eu_trade.gold`, `eu_trade.gold.vw_partner_ranking` read from the default
   schema returns its rows.
+
+<p align="right"><a href="#development">Back to top</a></p>
 
 ## Tests and lint
 
@@ -298,3 +311,5 @@ Lint, format and types, from the repository root:
 repository is not a package. Its ruff section names the rule families on top of
 ruff's defaults and says why the others are left out. mypy resolves the
 notebooks' imports from `src/` because `src/` is among the folders it checks.
+
+<p align="right"><a href="#development">Back to top</a></p>

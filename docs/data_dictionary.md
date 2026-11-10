@@ -6,6 +6,14 @@ Names follow the source: each COMEXT column becomes its name in snake_case, `REP
 sentinel becomes, is in [`engineering-notes.md`](engineering-notes.md), Silver. The layout of the
 code lists the pipeline reads is in [Code lists](#code-lists), at the end.
 
+## Contents
+
+- [Bronze](#bronze)
+- [Silver](#silver)
+- [Gold](#gold)
+- [Operations](#operations)
+- [Code lists](#code-lists)
+
 ## Bronze
 
 ### `bronze.comext_trade`
@@ -46,6 +54,8 @@ What the values hold as text, in July 2026:
   published, as Finland's exports of `72XXXXXX` to Sweden. Question 5 reads only rows with a value
   and a weight.
 
+<p align="right"><a href="#data-dictionary">Back to top</a></p>
+
 ## Silver
 
 ### `silver.trade_detail`
@@ -82,6 +92,8 @@ classification, `NO_SU` and a quantity of 0, so those columns are left out.
 | `value_eur`, `value_nac` | decimal(18,3) | The total of the combination |
 | `quantity_kg` | bigint | The total mass |
 | `_source_file`, `_batch_id` | string | As in the detail |
+
+<p align="right"><a href="#data-dictionary">Back to top</a></p>
 
 ## Gold
 
@@ -180,6 +192,8 @@ Sums are `decimal(28,3)`, a balance `decimal(29,3)` and the total of a flow `dec
 are `decimal(38,10)`, and `value_per_kg` is `decimal(38,13)`. A rank is an `int`, and NULL for a
 partner that is not a country.
 
+<p align="right"><a href="#data-dictionary">Back to top</a></p>
+
 ## Operations
 
 ### `ops.dq_check_results`
@@ -212,6 +226,8 @@ of both layers matched its expectation.
 | `archive_bytes` | bigint | The size of its archive |
 | `batch_id`, `processed_at` | string, timestamp | The run of the gold checks that passed on it |
 
+<p align="right"><a href="#data-dictionary">Back to top</a></p>
+
 ## Code lists
 
 The nine lists the landing downloads in every run into `code_lists/` in the Volume, from
@@ -242,3 +258,5 @@ is `dd/mm/yyyy`, and `31/12/2500` means still valid.
   [`reference/euro_area_members.csv`](../reference/euro_area_members.csv) holds those 20 with the
   relation's dates, and Bulgaria from 2026-01-01, each with its source; `dim_country` takes the
   euro area from it.
+
+<p align="right"><a href="#data-dictionary">Back to top</a></p>

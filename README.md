@@ -4,9 +4,26 @@
 **Python** · **PySpark** · **Delta Lake** · **Databricks** · **SQL**
 
 Medallion lakehouse over Eurostat COMEXT detailed trade data, built in PySpark on Databricks:
-seven months of 2026, 35,253,450 rows, through bronze, silver and gold written by hand. One Job
+seven months of 2026, 35 million rows, through bronze, silver and gold written by hand. One Job
 lands each month from Eurostat and takes it to the views of five business questions; a watermark
 notices when Eurostat republishes a month, and 20 quality checks declare the failures they expect.
+
+## Contents
+
+- [What This Project Shows](#what-this-project-shows)
+- [Business Questions](#business-questions)
+- [Dataset](#dataset)
+- [Architecture](#architecture)
+- [Tech Stack](#tech-stack)
+- [Repository Layout](#repository-layout)
+- [Pipeline Steps](#pipeline-steps)
+- [Data Model](#data-model)
+- [Data Quality](#data-quality)
+- [Incremental Load](#incremental-load)
+- [How to Run](#how-to-run)
+- [Results](#results)
+- [What Is Not in This Repository](#what-is-not-in-this-repository)
+- [Limitations](#limitations)
 
 ## What This Project Shows
 
@@ -14,11 +31,13 @@ notices when Eurostat republishes a month, and 20 quality checks declare the fai
 |---|---|---|
 | Medallion layers written by hand | Bronze a faithful copy as text, silver typed with the `TOTAL` rows apart, gold a star schema of 2 facts and 5 dimensions, in PySpark and without dbt | [`src/`](src/), and the notes from [Bronze](docs/engineering-notes.md#bronze) to [Gold](docs/engineering-notes.md#gold) |
 | Incremental load by publication | A watermark records, per file, the Eurostat publication processed: a month new or republished under the same name is pending, and `replaceWhere` rewrites it in place | [`src/watermark.py`](src/watermark.py), [Incremental Load](#incremental-load) |
-| Slowly changing dimensions, type 2 | `dim_country` and `dim_product` keep one row per version of a code, loaded by a MERGE written by hand, and a fact row joins the version valid in its month | [`src/gold.py`](src/gold.py), [Dimensions with history (SCD type 2)](docs/engineering-notes.md#dimensions-with-history-scd-type-2) |
+| Slowly changing dimensions, type 2 | `dim_country` and `dim_product` keep one row per version of a code, loaded by a MERGE written by hand, and a fact row joins the version valid in its month | [`src/gold.py`](src/gold.py), [SCD type 2](docs/engineering-notes.md#dimensions-with-history-scd-type-2) |
 | Data quality with expected failures | 20 checks declare the failures they expect and write their results to `ops`; a result off its expectation, in either direction, stops the run | [`src/silver_checks.py`](src/silver_checks.py), [`src/gold_checks.py`](src/gold_checks.py), [Quality checks](docs/engineering-notes.md#quality-checks) |
 | Reconciliation with published figures | Each month's totals within 0.05 M EUR of the figures Eurostat publishes, from a copy saved with the files of the same publication | [The source](docs/engineering-notes.md#the-source) |
 | Orchestration from the repository | One Databricks Job of seven tasks, from Eurostat to the views, read from the branch `main` and created from a JSON definition | [`jobs/trade_pipeline_job.json`](jobs/trade_pipeline_job.json), [The Job](docs/engineering-notes.md#the-job) |
 | CI | ruff, mypy and 245 tests, 130 of them on a local Spark with Delta over real rows of the landed files, on every push | [`ci.yml`](.github/workflows/ci.yml), [Tests and lint](docs/development.md#tests-and-lint) |
+
+<p align="right"><a href="#eu-trade-lakehouse">Back to top</a></p>
 
 ## Business Questions
 
@@ -34,6 +53,8 @@ schema and one query in [`sql/analysis_queries.sql`](sql/analysis_queries.sql):
 Question 4 is asked by product heading: Germany's largest import partner holds 14.5% of its
 imports, while China holds 44.0% of its imports of batteries. Question 5 divides sums instead of
 averaging ratios. The answers for July 2026 are in [Results](#results).
+
+<p align="right"><a href="#eu-trade-lakehouse">Back to top</a></p>
 
 ## Dataset
 
@@ -52,6 +73,8 @@ a month. Several properties of the data give a wrong number without anything fai
 
 Every property of the source, with its counts and the pages of Eurostat's manual, is in the notes,
 from [The source](docs/engineering-notes.md#the-source) to [Silver](docs/engineering-notes.md#silver).
+
+<p align="right"><a href="#eu-trade-lakehouse">Back to top</a></p>
 
 ## Architecture
 
@@ -96,6 +119,8 @@ flowchart TB
 - **The watermark is written last**, only when every check of both layers matched its expectation:
   a run that stops leaves its months pending.
 
+<p align="right"><a href="#eu-trade-lakehouse">Back to top</a></p>
+
 ## Tech Stack
 
 | Layer | Tool | Why |
@@ -110,6 +135,8 @@ flowchart TB
 **Why Spark, for 35 million rows.** The data comes as monthly files of about five million rows, and
 every run reads, rewrites and checks whole months, the shape Spark distributes. Seven months fit on
 one machine; a month more is a partition more, and enters the window on its own.
+
+<p align="right"><a href="#eu-trade-lakehouse">Back to top</a></p>
 
 ## Repository Layout
 
@@ -150,6 +177,8 @@ one machine; a month more is a partition more, and enters the window on its own.
 └── requirements.txt               # the lock compiled from it: every package at one version
 ```
 
+<p align="right"><a href="#eu-trade-lakehouse">Back to top</a></p>
+
 ## Pipeline Steps
 
 | # | Step | Writes | Stops the run when |
@@ -164,6 +193,8 @@ one machine; a month more is a partition more, and enters the window on its own.
 
 Notebooks 01 to 05 process only the pending months, and end without writing when there are none.
 The cases that fail each step are in the [engineering notes](docs/engineering-notes.md).
+
+<p align="right"><a href="#eu-trade-lakehouse">Back to top</a></p>
 
 ## Data Model
 
@@ -251,6 +282,8 @@ July 2026 joins its euro-area version, and its trade of 2025 does not
 ([Dimensions with history (SCD type 2)](docs/engineering-notes.md#dimensions-with-history-scd-type-2)).
 Every column is in [`docs/data_dictionary.md`](docs/data_dictionary.md).
 
+<p align="right"><a href="#eu-trade-lakehouse">Back to top</a></p>
+
 ## Data Quality
 
 **20 checks, 13 on silver and 7 on gold, and over the seven months every one found exactly the
@@ -268,6 +301,8 @@ off its expectation, in either direction, stops the run, and every month expects
 **A check off by one row stops the run.** With the expectation of 06a moved by one row, up and then
 down, the run wrote its results and stopped, naming the check, the table, the file and both counts
 ([Quality checks](docs/engineering-notes.md#quality-checks)).
+
+<p align="right"><a href="#eu-trade-lakehouse">Back to top</a></p>
 
 ## Incremental Load
 
@@ -295,6 +330,8 @@ which lacks most of its intra-EU trade ([Dataset](#dataset)), and lands it with 
 
 **The schedule is paused.** The Job runs monthly, on the 20th at 06:00 Brussels time, as it would
 in production; here a schedule would spend the compute quota on its own, so a run starts by hand.
+
+<p align="right"><a href="#eu-trade-lakehouse">Back to top</a></p>
 
 ## How to Run
 
@@ -342,6 +379,8 @@ and `end_period`, as `YYYYMM`, change the window for one run.
 
 The 130 tests marked `spark` need a JDK 17 and `JAVA_HOME`; the other 115 start no JVM. The CI runs
 all 245 on every push, on Ubuntu, in 7 to 11 minutes ([Tests and lint](docs/development.md#tests-and-lint)).
+
+<p align="right"><a href="#eu-trade-lakehouse">Back to top</a></p>
 
 ## Results
 
@@ -434,6 +473,8 @@ after inward processing.** The data does not say why these partners.
 
 Queries: [both cases, by heading and procedure](sql/results_queries.sql#L175-L249)
 
+<p align="right"><a href="#eu-trade-lakehouse">Back to top</a></p>
+
 ## What Is Not in This Repository
 
 - **A dashboard.** The answers are in [Results](#results), each with its query. The Power BI work
@@ -449,6 +490,8 @@ Queries: [both cases, by heading and procedure](sql/results_queries.sql#L175-L24
   in the [engineering notes](docs/engineering-notes.md).
 - **dbt.** The medallion layers written by hand in PySpark are what this project shows. The SEC
   EDGAR pipeline builds its warehouse with dbt.
+
+<p align="right"><a href="#eu-trade-lakehouse">Back to top</a></p>
 
 ## Limitations
 
@@ -477,6 +520,8 @@ Queries: [detail against totals](sql/results_queries.sql#L280-L309) · [the grou
 
 **The platform**, Databricks Free Edition: serverless only, one SQL warehouse, and an unpublished
 quota, with 11.06 DBU the most spent in one day ([serverless](docs/development.md#databricks-serverless)).
+
+<p align="right"><a href="#eu-trade-lakehouse">Back to top</a></p>
 
 ---
 

@@ -4,13 +4,31 @@ The rules in this repository that are easy to break and expensive to break.
 [`README.md`](../README.md) says what the project is, and
 [`development.md`](development.md) how it is installed, deployed and tested.
 
-## The source
+## Contents
+
+- [The source](#the-source)
+- [Partners and products](#partners-and-products)
+- [Landing and the manifest](#landing-and-the-manifest)
+- [Bronze](#bronze)
+- [Silver](#silver)
+- [Gold](#gold)
+- [Dimensions with history (SCD type 2)](#dimensions-with-history-scd-type-2)
+- [The business questions](#the-business-questions)
+- [Quality checks](#quality-checks)
+- [The incremental run](#the-incremental-run)
+- [The Job](#the-job)
 
 <details open>
-<summary><b>One 7z archive per month, holding one CSV of 18 columns, which
+<summary>
+
+## The source
+
+**One 7z archive per month, holding one CSV of 18 columns, which
 Eurostat republishes in place: a file is told by its publication time, not by
-its month.</b> July 2026 is 46,802,030 bytes and 5,050,155 rows, as published
-on 2026-10-16.</summary>
+its month.** July 2026 is 46,802,030 bytes and 5,050,155 rows, as published
+on 2026-10-16.
+
+</summary>
 
 | | |
 |---|---|
@@ -72,15 +90,21 @@ table.
 
 </details>
 
+<p align="right"><a href="#engineering-notes">Back to top</a></p>
+
 </details>
+
+<details open>
+<summary>
 
 ## Partners and products
 
-<details open>
-<summary><b>Four properties of the codes change a ranking or a sum without
-changing a row count.</b> In July 2026, 9,738.2 M EUR, 0.80% of the month,
+**Four properties of the codes change a ranking or a sum without
+changing a row count.** In July 2026, 9,738.2 M EUR, 0.80% of the month,
 changes partner with the rows read, and codes ending in X hold 2.93% of the
-value of the rows by product.</summary>
+value of the rows by product.
+
+</summary>
 
 - **Ten partner codes are not countries.** The Q codes, for high seas, stores
   and provisions, a partner not specified and a partner confidential, count in
@@ -108,15 +132,21 @@ value of the rows by product.</summary>
   the HS hierarchy stops at the level they keep, and one of them can take a
   row per code of the parallel classifications (Silver).
 
+<p align="right"><a href="#engineering-notes">Back to top</a></p>
+
 </details>
+
+<details open>
+<summary>
 
 ## Landing and the manifest
 
-<details open>
-<summary><b>The landing task compares each month of the window with the
+**The landing task compares each month of the window with the
 Volume's manifest and lands only the new and republished ones, through the
-driver's disk.</b> Its last run found the seven months of 2026 current, landed
-none, and downloaded the nine code lists again.</summary>
+driver's disk.** Its last run found the seven months of 2026 current, landed
+none, and downloaded the nine code lists again.
+
+</summary>
 
 `land()` in `src/land.py`, the first task of the Job, reads the listing once,
 before any download, and takes the months of the window from it (The
@@ -180,15 +210,21 @@ with default storage, created in Catalog Explorer.
 
 </details>
 
+<p align="right"><a href="#engineering-notes">Back to top</a></p>
+
 </details>
+
+<details open>
+<summary>
 
 ## Bronze
 
-<details open>
-<summary><b>Bronze is a faithful copy of the landed files, every column as
+**Bronze is a faithful copy of the landed files, every column as
 text and one publication per month: 35,253,450 rows for the seven months of
-2026.</b> The rows of each file equal its lines, counted without the CSV
-parser.</summary>
+2026.** The rows of each file equal its lines, counted without the CSV
+parser.
+
+</summary>
 
 `notebooks/01_bronze_ingest.py` loads the CSV files of the Volume into
 `eu_trade.bronze.comext_trade`, a managed Delta table partitioned by `PERIOD`:
@@ -233,14 +269,20 @@ header, 0 nulls and 0 rows of another period:
 string as its null marker by default (`nullValue` is `""`): the null check is
 what would surface one, and no field of the seven full months is null.
 
+<p align="right"><a href="#engineering-notes">Back to top</a></p>
+
 </details>
+
+<details open>
+<summary>
 
 ## Silver
 
-<details open>
-<summary><b>Silver splits bronze into two typed tables, the rows by product
-and the <code>TOTAL</code> rows, so no sum over the detail counts a euro
-twice:</b> 5,037,372 and 12,783 rows in July 2026.</summary>
+**Silver splits bronze into two typed tables, the rows by product
+and the `TOTAL` rows, so no sum over the detail counts a euro
+twice:** 5,037,372 and 12,783 rows in July 2026.
+
+</summary>
 
 The rules live in `src/silver.py`, and `notebooks/02_silver_transform.py`
 applies them. The checks live in `src/silver_checks.py`, with the failures
@@ -330,15 +372,21 @@ without an error.</summary>
 
 </details>
 
+<p align="right"><a href="#engineering-notes">Back to top</a></p>
+
 </details>
+
+<details open>
+<summary>
 
 ## Gold
 
-<details open>
-<summary><b>Two facts, the two silver tables with each code replaced by the
+**Two facts, the two silver tables with each code replaced by the
 key of the version valid in its month, and five dimensions read from the code
-lists and the seeds.</b> The totals name the partner the rows by product
-hide: read from the detail, Norway's July 2026 is 11.2% smaller.</summary>
+lists and the seeds.** The totals name the partner the rows by product
+hide: read from the detail, Norway's July 2026 is 11.2% smaller.
+
+</summary>
 
 `src/gold.py` builds the star, and `notebooks/04_gold_dimensional_model.py`
 writes it to the `gold` schema. `fct_trade_detail` and `fct_trade_totals` keep
@@ -396,15 +444,21 @@ row does not add up, and question 5 divides sums.
 
 </details>
 
+<p align="right"><a href="#engineering-notes">Back to top</a></p>
+
 </details>
+
+<details open>
+<summary>
 
 ## Dimensions with history (SCD type 2)
 
-<details open>
-<summary><b><code>dim_country</code> and <code>dim_product</code> keep one row
+**`dim_country` and `dim_product` keep one row
 per version of a code, 390 and 30,985, and a fact row joins the version valid
-in its month.</b> Bulgaria's trade of July 2026 is euro-area trade, and its
-trade of 2025 is not.</summary>
+in its month.** Bulgaria's trade of July 2026 is euro-area trade, and its
+trade of 2025 is not.
+
+</summary>
 
 A slowly changing dimension of type 2 keeps a row for every version of a
 member, with the dates it was valid, instead of overwriting the old values.
@@ -482,15 +536,21 @@ month already loaded keeps its version. The dimension as it stood on
 
 </details>
 
+<p align="right"><a href="#engineering-notes">Back to top</a></p>
+
 </details>
+
+<details open>
+<summary>
 
 ## The business questions
 
-<details open>
-<summary><b>Six views over the star answer the five questions, and a notebook
-task creates them, since a SQL task would need the SQL warehouse.</b> The
+**Six views over the star answer the five questions, and a notebook
+task creates them, since a SQL task would need the SQL warehouse.** The
 notebook stops unless each view keeps the value of every fact row it
-reads.</summary>
+reads.
+
+</summary>
 
 `sql/gold_views.sql` holds the views, and `sql/analysis_queries.sql` one query
 per question that states the answer for the latest month loaded.
@@ -570,15 +630,21 @@ question 5 1,164,149,183,748.356. The six views hold 9,566, 2,618, 54, 5,194,
 
 </details>
 
+<p align="right"><a href="#engineering-notes">Back to top</a></p>
+
 </details>
+
+<details open>
+<summary>
 
 ## Quality checks
 
-<details open>
-<summary><b>20 checks, 13 on silver and 7 on gold, expect the same rule in
+**20 checks, 13 on silver and 7 on gold, expect the same rule in
 every month, and a result off its expectation in either direction stops the
-run.</b> In each of the seven months, silver 06a found 5.3% to 5.6% of the
-rows by product and gold 07 two groups, and every other check 0.</summary>
+run.** In each of the seven months, silver 06a found 5.3% to 5.6% of the
+rows by product and gold 07 two groups, and every other check 0.
+
+</summary>
 
 The checks live in `src/silver_checks.py` and `src/gold_checks.py`, and
 notebooks 03 and 05 run them. Each writes one row per table it reads and per
@@ -687,15 +753,21 @@ put the totals above the detail. The sums come from the gold facts through
 
 </details>
 
+<p align="right"><a href="#engineering-notes">Back to top</a></p>
+
 </details>
+
+<details open>
+<summary>
 
 ## The incremental run
 
-<details open>
-<summary><b>A month is pending when the Volume's manifest dates its archive
+**A month is pending when the Volume's manifest dates its archive
 otherwise than the watermark, and a run writes only the pending
-months.</b> 202605, republished, and 202607, new, were each pending in their
-run, and the other five months were not written again.</summary>
+months.** 202605, republished, and 202607, new, were each pending in their
+run, and the other five months were not written again.
+
+</summary>
 
 `ops.etl_watermark` records, per file, the publication the pipeline processed
 ([data dictionary](data_dictionary.md#opsetl_watermark)). `src/watermark.py`
@@ -763,16 +835,22 @@ through every layer, with the same numbers and the same 42 lines (The Job).
 
 </details>
 
+<p align="right"><a href="#engineering-notes">Back to top</a></p>
+
 </details>
+
+<details open>
+<summary>
 
 ## The Job
 
-<details open>
-<summary><b>One Job runs the seven notebooks as a chain of tasks on
-serverless, from the branch <code>main</code>, one task at a time.</b> With
-<code>end_period</code> 202607 it landed 202607 again from Eurostat and took
+**One Job runs the seven notebooks as a chain of tasks on
+serverless, from the branch `main`, one task at a time.** With
+`end_period` 202607 it landed 202607 again from Eurostat and took
 it to gold in 13 minutes, with the counts of the incremental run and the same
-42 lines of the views, byte for byte.</summary>
+42 lines of the views, byte for byte.
+
+</summary>
 
 `jobs/trade_pipeline_job.json` defines `eu_trade_pipeline` as the Jobs API
 takes it, and `src/deploy_job.py` creates it from the file, or replaces the
@@ -796,5 +874,7 @@ first task waits for compute, and the landing also installs its environment:
 it took 287 seconds in the run of 202607, 41 of them landing the month. With
 the defaults, a run over the seven months left 202608 out, landed nothing and
 found nothing pending, and printed the same 42 lines, in 8 minutes.
+
+<p align="right"><a href="#engineering-notes">Back to top</a></p>
 
 </details>
