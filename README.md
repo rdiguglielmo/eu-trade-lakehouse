@@ -82,6 +82,10 @@ One Job on Databricks serverless: its first task lands the months in a Volume, a
 build the layers.
 
 ```mermaid
+---
+config:
+  layout: dagre
+---
 flowchart TB
     subgraph eurostat[Eurostat]
         direction LR
@@ -101,9 +105,9 @@ flowchart TB
         OPS["ops<br/>dq_check_results, etl_watermark"]
     end
 
-    BULK --> LAND
-    LIST --> LAND
-    STAT --> LAND
+    BULK --> dbx
+    LIST --> dbx
+    STAT --> dbx
     LAND --> VOL
     VOL -->|01_bronze_ingest| BR
     BR -->|02_silver_transform| SI
@@ -111,6 +115,9 @@ flowchart TB
     GO -->|06_gold_views| VW
     SI -.->|03_silver_quality_checks| OPS
     GO -.->|05_gold_quality_checks, then the watermark| OPS
+
+    style eurostat fill:none
+    style dbx fill:none
 ```
 
 - **The landing is the first task.** It downloads from `ec.europa.eu` on serverless and extracts
